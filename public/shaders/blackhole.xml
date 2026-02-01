@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<shaders>
+  <!-- Black Hole shader - Creates an animated circular void that consumes the screen -->
+  <shader name="BlackHole" description="Creates an animated circular void that consumes the screen">
+    <parameters>
+      <param name="Enabled" type="float" default="1.0" min="0.0" max="1.0" step="0.1"/>
+      <param name="BlackPosition" type="vec3" default="240,135,50"/>
+      <param name="Time" type="float" studioType="time"/>
+    </parameters>
+    <vertex><![CDATA[
+      // Black Hole vertex shader for The Binding of Isaac
+      // Sets up position and passes parameters to fragment shader
+      
+      // Standard Isaac vertex attributes
+      attribute vec3 Position;     // Vertex position in 3D space
+      attribute vec4 Color;        // Vertex color from the game (usually white)
+      attribute vec2 TexCoord;     // UV texture coordinates (0,0 to 1,1)
+      attribute vec4 RenderData;   // xy=offset, zw=screen dimensions in pixels
+      attribute float Scale;       // Room zoom level (typically 0.5)
+      
+      // Custom shader parameters
+      attribute float Enabled;     // Toggle effect on/off (0.0 or 1.0)
+      attribute vec3 BlackPosition; // xyz: xy=center position, z=radius in pixels
+      attribute float Time;        // Animation time (auto-incrementing frame counter)
+      
+      // Transformation matrix
+      uniform mat4 Transform;      // Model-view-projection matrix
+      
+      // Varyings to pass data to fragment shader
+      varying vec4 Color0;         // Pass through vertex color
+      varying vec2 TexCoord0;      // Pass through texture coordinates
+      varying vec4 RenderDataOut;  // Pass through screen dimensions
+      varying float ScaleOut;      // Pass through zoom scale
+      
+      // Custom parameter varyings
+      varying float EnabledOut;    // Pass enabled state to fragment
+      varying vec3 BlackPositionOut; // Pass black hole position/size to fragment
+      varying float TimeOut;       // Pass animation time to fragment
+      
+      void main(void) {
+          // Pass all data through to fragment shader
+          Color0 = Color;
+          TexCoord0 = TexCoord;
+          RenderDataOut = RenderData;
+          ScaleOut = Scale;
+          EnabledOut = Enabled;
+          BlackPositionOut = BlackPosition;
+          TimeOut = Time;
+          
+          // Transform vertex position to clip space
+          gl_Position = Transform * vec4(Position.xyz, 1.0);
+      }
+    ]]></vertex>
+    <fragment><![CDATA[
+      // Black Hole fragment shader for The Binding of Isaac
+      // Creates an expanding circular void that turns pixels black
+      
+      // Input varyings from vertex shader
+      varying lowp vec4 Color0;           // Game's vertex color
+      varying mediump vec2 TexCoord0;     // UV coordinates (0,0 to 1,1)
+      varying lowp vec4 RenderDataOut;    // Screen dimensions in zw components
+      varying lowp float ScaleOut;        // Room zoom scale
+      
+      // Custom parameter varyings
+      varying lowp float EnabledOut;      // Effect toggle (0.0=off, 1.0=on)
+      varying lowp vec3 BlackPositionOut; // xy=center, z=radius in pixels
+      varying lowp float TimeOut;         // Animation time for expansion
+      
+      // The game's rendered frame texture
+      uniform sampler2D Texture0;
+      
+      void main(void) {
+          // ASPECT RATIO CALCULATION
+          // Needed to make circular shapes appear as circles, not ellipses
+          float aspect = RenderDataOut.z / RenderDataOut.w;
+          
+          // Sample the original game frame
+          vec4 Color = Color0 * texture2D(Texture0, TexCoord0);
+          
+          // POSITION CONVERSION
+          // Convert black hole center from screen pixels to normalized UV space (0-1)
+          // Scale factor accounts for the current room zoom level
+          vec2 pos = (BlackPositionOut.xy / RenderDataOut.zw) * ScaleOut;
+          
+          // RADIUS CALCULATION
+          // Use xy (center) and zy (center + radius) to calculate the radius
+          // The z component stores the radius offset from the center
+          vec2 rad = (BlackPositionOut.zy / RenderDataOut.zw) * ScaleOut * 1.02;
+          
+          // Calculate the actual radius in normalized space
+          // Apply aspect ratio correction to make circle appear round
+          float radius = length((rad - pos) * vec2(aspect, 1.0));
+          
+          // DISTANCE CALCULATION
+          // Calculate how far this pixel is from the black hole center
+          // Aspect ratio correction ensures circular distance field
+          float dist = length((TexCoord0 - pos) * vec2(aspect, 1.0));
+          
+          // BLACK HOLE EFFECT
+          // If pixel is inside the expanding radius, make it black
+          // TimeOut controls the animation - radius grows over time
+          if (dist < radius * TimeOut) {
+              // Subtract the color multiplied by Enabled
+              // When Enabled=1.0, this makes pixels fully black
+              // When Enabled=0.0, no change occurs
+              Color.rgb -= EnabledOut * Color.rgb;
+          }
+          
+          // Output the final color
+          gl_FragColor = Color;
+      }
+    ]]></fragment>
+  </shader>
+</shaders>

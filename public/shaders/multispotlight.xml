@@ -1,0 +1,268 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<shaders>
+  <!-- Multi-Spotlight shader - Creates spotlights on player and their tears -->
+  <shader name="MultiSpotlight" description="Creates spotlights on the player and their active tears (up to 5)">
+    <parameters>
+      <param name="PlayerPos" type="vec2" studioType="playerpos"/>
+      <param name="Radius" type="float" default="0.05" min="0.01" max="0.5" step="0.01"/>
+      <param name="Softness" type="float" default="0.16" min="0.0" max="0.5" step="0.02"/>
+      <param name="Ambient" type="float" default="0.15" min="0.0" max="1.0" step="0.05"/>
+      <param name="TearRadius" type="float" default="0.03" min="0.01" max="0.3" step="0.01"/>
+      <param name="TearPos1" type="vec2" studioType="tearpos" index="1"/>
+      <param name="TearPos2" type="vec2" studioType="tearpos" index="2"/>
+      <param name="TearPos3" type="vec2" studioType="tearpos" index="3"/>
+      <param name="TearPos4" type="vec2" studioType="tearpos" index="4"/>
+      <param name="TearPos5" type="vec2" studioType="tearpos" index="5"/>
+    </parameters>
+    <vertex><![CDATA[
+      // Multi-Spotlight vertex shader for The Binding of Isaac
+      // Demonstrates handling multiple dynamic light sources
+      // 
+      // OPTIMIZATION NOTE:
+      // To reduce varying count, tear positions are packed into vec4s
+      // vec4 TearPack1.xy = TearPos1, vec4 TearPack1.zw = TearPos2
+      
+      // Standard Isaac vertex attributes
+      attribute vec3 Position;     // Vertex position
+      attribute vec4 Color;        // Vertex color from game
+      attribute vec2 TexCoord;     // UV coordinates (0,0 to 1,1)
+      attribute vec4 RenderData;   // xy=offset, zw=screen dimensions
+      attribute float Scale;       // Room zoom level
+      
+      // Spotlight parameters
+      attribute vec2 PlayerPos;    // Player position in screen pixels
+      attribute float Radius;      // Player spotlight radius (normalized)
+      attribute float Softness;    // Spotlight edge softness
+      attribute float Ambient;     // Background lighting level (0=dark, 1=full)
+      attribute float TearRadius;  // Radius for tear spotlights (smaller than player)
+      
+      // Tear positions (up to 5 tears supported)
+      attribute vec2 TearPos1;     // First tear position in pixels
+      attribute vec2 TearPos2;     // Second tear position
+      attribute vec2 TearPos3;     // Third tear position
+      attribute vec2 TearPos4;     // Fourth tear position
+      attribute vec2 TearPos5;     // Fifth tear position
+      
+      // Transformation matrix
+      uniform mat4 Transform;
+      
+      // Standard varyings
+      varying vec4 Color0;
+      varying vec2 TexCoord0;
+      varying vec4 RenderDataOut;
+      varying float ScaleOut;
+      
+      // Custom parameter varyings
+      varying vec2 PlayerPosOut;
+      varying float RadiusOut;
+      varying float SoftnessOut;
+      varying float AmbientOut;
+      varying float TearRadiusOut;
+      
+      // Packed tear positions (optimization to reduce varying count)
+      // GPUs have limited varying slots, so we pack 2 vec2s into 1 vec4
+      varying vec4 TearPack1;      // xy = TearPos1, zw = TearPos2
+      varying vec4 TearPack2;      // xy = TearPos3, zw = TearPos4
+      varying vec2 TearPos5Out;    // Fifth tear (unpacked, only 1 left)
+      
+      void main(void) {
+          // Pass through standard attributes
+          Color0 = Color;
+          TexCoord0 = TexCoord;
+          RenderDataOut = RenderData;
+          ScaleOut = Scale;
+          
+          // Pass through spotlight parameters
+          PlayerPosOut = PlayerPos;
+          RadiusOut = Radius;
+          SoftnessOut = Softness;
+          AmbientOut = Ambient;
+          TearRadiusOut = TearRadius;
+          
+          // Pack tear positions into vec4s for efficient transfer
+          // This is a common GPU optimization technique
+          TearPack1 = vec4(TearPos1, TearPos2);  // Pack 2 positions
+          TearPack2 = vec4(TearPos3, TearPos4);  // Pack 2 more
+          TearPos5Out = TearPos5;                 // Fifth one unpacked
+          
+          gl_Position = Transform * vec4(Position.xyz, 1.0);
+      }
+    ]]></vertex>
+    <fragment><![CDATA[
+      // Multi-Spotlight fragment shader for The Binding of Isaac
+      // Creates dynamic lighting with one main spotlight (player)
+      // and up to 5 smaller spotlights (tears)
+      // 
+      // KEY CONCEPTS:
+      // 1. smoothstep() creates soft spotlight edges
+      // 2. Multiple spotlights combine with max() for proper overlap
+      // 3. Aspect ratio correction makes circles appear round
+      
+      // Input varyings from vertex shader
+      varying lowp vec4 Color0;
+      varying mediump vec2 TexCoord0;
+      varying lowp vec4 RenderDataOut;
+      varying lowp float ScaleOut;
+      
+      // Spotlight parameter varyings
+      varying mediump vec2 PlayerPosOut;
+      varying lowp float RadiusOut;
+      varying lowp float SoftnessOut;
+      varying lowp float AmbientOut;
+      varying lowp float TearRadiusOut;
+      
+      // Packed tear positions
+      varying mediump vec4 TearPack1;   // xy = Tear1, zw = Tear2
+      varying mediump vec4 TearPack2;   // xy = Tear3, zw = Tear4
+      varying mediump vec2 TearPos5Out; // Tear5
+      
+      // Game's rendered frame texture
+      uniform sampler2D Texture0;
+      
+      // ============================================================
+      // HELPER FUNCTION: Calculate spotlight contribution
+      // ============================================================
+      // Calculates how much light a single spotlight contributes
+      // to the current pixel
+      // 
+      // lightPos: position of light source in screen pixels
+      // radius: spotlight radius in normalized space
+      // softness: how soft/blurry the edge is
+      // aspectRatio: screen width/height for circle correction
+      // 
+      // Returns: 0.0 (outside spotlight) to 1.0 (fully lit)
+      float calcSpotlight(vec2 lightPos, float radius, float softness, float aspectRatio) {
+          // Skip inactive tears (position 0,0 means no tear)
+          // This is a common pattern for "null" positions in shaders
+          if (lightPos.x == 0.0 && lightPos.y == 0.0) {
+              return 0.0;
+          }
+          
+          // Convert light position from pixels to normalized UV space (0-1)
+          // Scale accounts for room zoom level
+          vec2 center = (lightPos / RenderDataOut.zw) * ScaleOut;
+          
+          // Calculate distance from current pixel to light center
+          vec2 diff = TexCoord0 - center;
+          
+          // Apply aspect ratio correction
+          // Without this, circles appear as ellipses on non-square screens
+          diff.x *= aspectRatio;
+          float dist = length(diff);
+          
+          // Adjust radius and softness by aspect ratio too
+          float adjustedRadius = radius * aspectRatio;
+          float adjustedSoftness = softness * aspectRatio;
+          
+          // smoothstep creates the soft spotlight falloff:
+          // - Returns 1.0 when dist < adjustedRadius (fully inside)
+          // - Returns 0.0 when dist > adjustedRadius + adjustedSoftness (fully outside)
+          // - Smooth transition in between
+          return smoothstep(adjustedRadius + adjustedSoftness, adjustedRadius, dist);
+      }
+      
+      void main(void) {
+          // Sample the original game frame
+          vec4 tex = texture2D(Texture0, TexCoord0);
+          
+          // ASPECT RATIO CALCULATION
+          // Screen width divided by height
+          // Used to make circular spotlights appear round
+          float aspectRatio = RenderDataOut.z / RenderDataOut.w;
+          
+          // PLAYER SPOTLIGHT (Main Light)
+          // Convert player position from pixels to normalized UV space
+          vec2 playerCenter = (PlayerPosOut / RenderDataOut.zw) * ScaleOut;
+          
+          // Calculate distance from current pixel to player
+          vec2 diff = TexCoord0 - playerCenter;
+          diff.x *= aspectRatio;  // Aspect ratio correction
+          float dist = length(diff);
+          
+          // Adjust radius and softness for aspect ratio
+          float adjustedRadius = RadiusOut * aspectRatio;
+          float adjustedSoftness = SoftnessOut * aspectRatio;
+          
+          // Create main player spotlight using smoothstep
+          float spotlight = smoothstep(adjustedRadius + adjustedSoftness, adjustedRadius, dist);
+          
+          // TEAR SPOTLIGHTS (Secondary Lights)
+          // Calculate softness proportional to radius difference
+          // Smaller tears = proportionally softer edges
+          float tearSoftness = SoftnessOut * (TearRadiusOut / RadiusOut);
+          
+          // Add each tear's spotlight contribution
+          // max() ensures overlapping lights don't get brighter than 1.0
+          spotlight = max(spotlight, calcSpotlight(TearPack1.xy, TearRadiusOut, tearSoftness, aspectRatio));
+          spotlight = max(spotlight, calcSpotlight(TearPack1.zw, TearRadiusOut, tearSoftness, aspectRatio));
+          spotlight = max(spotlight, calcSpotlight(TearPack2.xy, TearRadiusOut, tearSoftness, aspectRatio));
+          spotlight = max(spotlight, calcSpotlight(TearPack2.zw, TearRadiusOut, tearSoftness, aspectRatio));
+          spotlight = max(spotlight, calcSpotlight(TearPos5Out, TearRadiusOut, tearSoftness, aspectRatio));
+          
+          // FINAL LIGHTING CALCULATION
+          // Combine ambient light with spotlight
+          // When spotlight=0: brightness = Ambient (dark but visible)
+          // When spotlight=1: brightness = 1.0 (fully lit)
+          float finalBrightness = AmbientOut + (1.0 - AmbientOut) * spotlight;
+          
+          // Output: original color * brightness
+          gl_FragColor = Color0 * tex * finalBrightness;
+      }
+    ]]></fragment>
+    <lua><![CDATA[
+-- Shader: MultiSpotlight
+-- Creates spotlights on the player and their active tears (up to 5)
+-- Generated by Isaac Shader Studio
+
+local MultiSpotlightMod = RegisterMod("MultiSpotlightMod", 1)
+
+function MultiSpotlightMod:GetShaderParams(shaderName)
+    if shaderName == 'MultiSpotlight' then
+        local player = Isaac.GetPlayer()
+        if not player then return end
+
+        -- Get player screen position
+        local screenPos = Isaac.WorldToScreen(player.Position)
+
+        -- Collect tear positions (player tears only, up to 5)
+        local tearPositions = {}
+        local tears = Isaac.FindByType(EntityType.ENTITY_TEAR, -1, -1, false, false)
+
+        for _, entity in ipairs(tears) do
+            if #tearPositions >= 5 then break end
+
+            local tear = entity:ToTear()
+            if tear and tear.SpawnerEntity then
+                local spawner = tear.SpawnerEntity
+                -- Check if spawner is a player (not an enemy)
+                if spawner.Type == EntityType.ENTITY_PLAYER then
+                    local tearScreenPos = Isaac.WorldToScreen(tear.Position)
+                    table.insert(tearPositions, { tearScreenPos.X, tearScreenPos.Y  + tear.Height })
+                end
+            end
+        end
+
+        -- Pad with zeros for unused slots
+        while #tearPositions < 5 do
+            table.insert(tearPositions, { 0, 0 })
+        end
+
+        return {
+            PlayerPos = { screenPos.X, screenPos.Y },
+            Radius = 0.05,
+            Softness = 0.16,
+            Ambient = 0.15,
+            TearRadius = 0.03,
+            TearPos1 = tearPositions[1],
+            TearPos2 = tearPositions[2],
+            TearPos3 = tearPositions[3],
+            TearPos4 = tearPositions[4],
+            TearPos5 = tearPositions[5]
+        }
+    end
+end
+
+MultiSpotlightMod:AddCallback(ModCallbacks.MC_GET_SHADER_PARAMS, MultiSpotlightMod.GetShaderParams)
+    ]]></lua>
+  </shader>
+</shaders>

@@ -1,0 +1,83 @@
+<shaders>
+  <shader name="SpotlightDebug">
+    <parameters>
+      <param name="playerpos" type="vec2"/>
+    </parameters>
+    <vertex><![CDATA[
+attribute vec3 Position;
+attribute vec4 Color;
+attribute vec2 TexCoord;
+attribute vec4 RenderData;
+attribute float Scale;
+
+attribute vec2 playerpos;
+
+uniform mat4 Transform;
+
+varying vec4 Color0;
+varying vec2 TexCoord0;
+varying vec4 RenderDataOut;
+varying float ScaleOut;
+
+varying vec2 playerposOut;
+
+void main(void) {
+    Color0 = Color;
+    TexCoord0 = TexCoord;
+    RenderDataOut = RenderData;
+    ScaleOut = Scale;
+    playerposOut = playerpos;
+    gl_Position = Transform * vec4(Position.xyz, 1.0);
+}
+    ]]></vertex>
+    <fragment><![CDATA[
+varying lowp vec4 Color0;
+varying mediump vec2 TexCoord0;
+varying lowp vec4 RenderDataOut;
+varying lowp float ScaleOut;
+
+varying mediump vec2 playerposOut;
+
+uniform sampler2D Texture0;
+
+void main(void) {
+    // DEBUG SHADER - Shows coordinate systems
+    // Divide screen into 4 quadrants:
+    // Top-left: TexCoord
+    // Top-right: playerpos * 2.0 / RenderData.zw (swirl formula)
+    // Bottom-left: playerpos * 1.0 / RenderData.zw (no multiplier)
+    // Bottom-right: RenderData values
+    
+    // Top half
+    if (TexCoord0.y < 0.5) {
+        // Top-left: TexCoord as color
+        if (TexCoord0.x < 0.5) {
+            gl_FragColor = vec4(TexCoord0.x, TexCoord0.y, 0.0, 1.0);
+            return;
+        }
+        // Top-right: playerpos * 2.0 / RenderData.zw
+        vec2 pos2x = playerposOut * 2.0 / RenderDataOut.zw;
+        gl_FragColor = vec4(pos2x.x, pos2x.y, 0.0, 1.0);
+        return;
+    }
+    
+    // Bottom half
+    if (TexCoord0.x < 0.5) {
+        // Bottom-left: playerpos * 1.0 / RenderData.zw
+        vec2 pos1x = playerposOut / RenderDataOut.zw;
+        gl_FragColor = vec4(pos1x.x, pos1x.y, 0.0, 1.0);
+        return;
+    }
+    
+    // Bottom-right: Show RenderData.zw scaled to 0-1 range
+    // zw should be texture dimensions (e.g. 480x270 or similar)
+    gl_FragColor = vec4(
+        RenderDataOut.z / 1000.0,
+        RenderDataOut.w / 1000.0,
+        0.0,
+        1.0
+    );
+}
+    ]]></fragment>
+  </shader>
+</shaders>

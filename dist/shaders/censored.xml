@@ -1,0 +1,76 @@
+<shaders>
+    <!-- Censors Isaac - demo of using a shader in a limited area. -->
+    <shader name="Censored" description="Censors Isaac - demo of using a shader in a limited area.">
+      <parameters>
+        <param name="PlayerPos" type="vec2"/>
+        <param name="PixelSize" type="float" default="6.0" min="0.0" max="15.0" step="0.6"/>
+        <param name="RegionSize" type="float" default="32.0" min="0.0" max="200.0" step="1.0"/>
+      </parameters>
+      <vertex><![CDATA[
+        attribute vec3 Position;
+        attribute vec4 Color;
+        attribute vec2 TexCoord;
+        attribute vec4 RenderData;
+        attribute float Scale;
+        attribute vec2 PlayerPos;
+        attribute float PixelSize;
+        attribute float RegionSize;
+  
+        uniform mat4 Transform;
+  
+        varying vec4 Color0;
+        varying vec2 TexCoord0;
+        varying vec4 RenderDataOut;
+        varying float ScaleOut;
+        varying vec2 PlayerPosOut;
+        varying float PixelSizeOut;
+        varying float RegionSizeOut;
+  
+        void main(void) {
+            Color0 = Color;
+            TexCoord0 = TexCoord;
+            RenderDataOut = RenderData;
+            ScaleOut = Scale;
+            PlayerPosOut = PlayerPos;
+            PixelSizeOut = PixelSize;
+            RegionSizeOut = RegionSize;
+            gl_Position = Transform * vec4(Position.xyz, 1.0);
+        }
+      ]]></vertex>
+      <fragment><![CDATA[
+        varying lowp vec4 Color0;
+        varying mediump vec2 TexCoord0;
+        varying lowp vec4 RenderDataOut;
+        varying lowp float ScaleOut;
+        varying mediump vec2 PlayerPosOut;
+        varying lowp float PixelSizeOut;
+        varying mediump float RegionSizeOut;
+  
+        uniform sampler2D Texture0;
+  
+        void main(void) {
+            // Convert screen pixels to normalized 0-1 space
+            vec2 pos = (PlayerPosOut / RenderDataOut.zw) * ScaleOut;
+  
+            // Convert pixel-based region size to normalized space
+            float halfSizeNormalized = (RegionSizeOut * 0.5) / RenderDataOut.z;
+            
+            // Calculate difference in normalized space
+            vec2 diff = TexCoord0 - pos;
+            
+            // Check if current pixel is inside the square region
+            bool insideRegion = abs(diff.x) <= halfSizeNormalized && 
+                                abs(diff.y) <= halfSizeNormalized;
+  
+            if (insideRegion) {
+                // Apply pixelation effect
+                vec2 pixelatedUV = floor(TexCoord0 * RenderDataOut.zw / PixelSizeOut) * PixelSizeOut / RenderDataOut.zw;
+                gl_FragColor = Color0 * texture2D(Texture0, pixelatedUV);
+            } else {
+                // Normal rendering outside the region
+                gl_FragColor = Color0 * texture2D(Texture0, TexCoord0);
+            }
+        }
+      ]]></fragment>
+    </shader>
+  </shaders>

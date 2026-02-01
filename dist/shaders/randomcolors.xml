@@ -1,0 +1,54 @@
+<shaders>
+    <!-- Demo shader that modifies RGB channels based on player position and time -->
+    <shader name="RandomColors" description="Demo shader that modifies RGB channels based on player position and time">
+        <parameters>
+            <param name="PlayerPos" type="vec2" studioType="playerpos"/>
+        </parameters>
+        <vertex><![CDATA[
+            attribute vec3 Position;     // Position in normalized device coordinates (-1 to 1)
+            attribute vec4 Color;        // Per-vertex color (RGBA, typically white for screen effects)
+            attribute vec2 TexCoord;     // Texture coordinates (0 to 1)
+            attribute vec4 RenderData;   // .xy = window size, .zw = texture size (in pixels)
+            attribute float Scale;       // Room zoom level (1.0 = no zoom)
+            attribute vec2 PlayerPos;    // Player position in screen pixels from WorldToScreen()
+
+            varying vec4 Color0;         // Declares the vertex color to the fragment shader
+            varying vec2 TexCoord0;      // Declares the texture coordinates to the fragment shader
+            varying vec4 RenderDataOut;  // Declares the render data to the fragment shader
+            varying float ScaleOut;      // Declares the scale to the fragment shader
+            varying vec2 PlayerPosOut;   // Declares the player position to the fragment shader
+
+            uniform mat4 Transform;      // Model-view-projection matrix
+
+            void main(void) {
+                RenderDataOut = RenderData;  // Passes the render data to the fragment shader
+                ScaleOut = Scale;            // Passes the scale to the fragment shader
+                PlayerPosOut = PlayerPos;    // Passes the player position to the fragment shader
+                Color0 = Color;              // Passes the vertex color to the fragment shader
+                TexCoord0 = TexCoord;        // Passes the texture coordinates to the fragment shader
+
+                gl_Position = Transform * vec4(Position.xyz, 1.0); // Transform the position to clip space
+            }
+        ]]></vertex>
+        <fragment><![CDATA[
+            varying lowp vec4 Color0;            // Receives the vertex color from the vertex shader
+            varying mediump vec2 TexCoord0;      // Receives the texture coordinates from the vertex shader
+            varying lowp vec4 RenderDataOut;     // Receives the render data from the vertex shader
+            varying lowp float ScaleOut;         // Receives the scale from the vertex shader
+            varying mediump vec2 PlayerPosOut;   // Receives the player position from the vertex shader
+
+            uniform sampler2D Texture0;          // The source texture being rendered
+
+            void main(void) {
+                vec4 texColor = Color0 * texture2D(Texture0, TexCoord0);
+
+                // Modulate color channels based on player position
+                texColor.r *= (PlayerPosOut.x / 100.0) * 0.5;
+                texColor.g *= (PlayerPosOut.y / 100.0) * 0.5;
+                texColor.b *= 0.5;
+
+                gl_FragColor = texColor;
+            }
+        ]]></fragment>
+    </shader>
+</shaders>

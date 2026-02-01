@@ -1,0 +1,380 @@
+# Example Shaders
+
+A collection of example shaders to help you get started. Each example includes
+the fragment shader code and the attributes needed.
+
+## Passthrough (Default)
+
+The simplest shader that displays the game unmodified. This is the starting
+point for all custom shaders.
+
+```glsl
+varying lowp vec4 Color0;
+varying mediump vec2 TexCoord0;
+uniform sampler2D Texture0;
+
+void main(void) {
+    gl_FragColor = Color0 * texture2D(Texture0, TexCoord0);
+}
+```
+
+**Attributes:** None required
+
+---
+
+## Player Spotlight
+
+Creates a spotlight effect centered on the player. Areas far from the player
+are darkened.
+
+```glsl
+varying lowp vec4 Color0;
+varying mediump vec2 TexCoord0;
+uniform sampler2D Texture0;
+
+uniform vec2 PlayerPos;
+uniform float Radius;
+uniform float Darkness;
+
+void main(void) {
+    vec4 tex = texture2D(Texture0, TexCoord0);
+    float dist = distance(TexCoord0, PlayerPos);
+    float spotlight = smoothstep(Radius, Radius * 0.5, dist);
+    float brightness = mix(Darkness, 1.0, spotlight);
+    gl_FragColor = Color0 * tex * vec4(vec3(brightness), 1.0);
+}
+```
+
+**Attributes:**
+| Name | Type | Default | Min | Max |
+|------|------|---------|-----|-----|
+| PlayerPos | Player Position (Auto) | - | - | - |
+| Radius | Float | 0.4 | 0.1 | 1.0 |
+| Darkness | Float | 0.1 | 0.0 | 0.5 |
+
+---
+
+## Grayscale
+
+Converts the image to grayscale using luminance weights.
+
+```glsl
+varying lowp vec4 Color0;
+varying mediump vec2 TexCoord0;
+uniform sampler2D Texture0;
+
+uniform float Intensity;
+
+void main(void) {
+    vec4 tex = texture2D(Texture0, TexCoord0);
+    float gray = dot(tex.rgb, vec3(0.299, 0.587, 0.114));
+    vec3 color = mix(tex.rgb, vec3(gray), Intensity);
+    gl_FragColor = Color0 * vec4(color, tex.a);
+}
+```
+
+**Attributes:**
+| Name | Type | Default | Min | Max |
+|------|------|---------|-----|-----|
+| Intensity | Float | 1.0 | 0.0 | 1.0 |
+
+---
+
+## Color Tint
+
+Applies a color tint to the entire scene.
+
+```glsl
+varying lowp vec4 Color0;
+varying mediump vec2 TexCoord0;
+uniform sampler2D Texture0;
+
+uniform vec3 TintColor;
+uniform float TintStrength;
+
+void main(void) {
+    vec4 tex = texture2D(Texture0, TexCoord0);
+    vec3 tinted = mix(tex.rgb, tex.rgb * TintColor, TintStrength);
+    gl_FragColor = Color0 * vec4(tinted, tex.a);
+}
+```
+
+**Attributes:**
+| Name | Type | Default |
+|------|------|---------|
+| TintColor | Color | #ff8080 |
+| TintStrength | Float | 0.5 (0-1) |
+
+---
+
+## Vignette
+
+Darkens the edges of the screen for a cinematic look.
+
+```glsl
+varying lowp vec4 Color0;
+varying mediump vec2 TexCoord0;
+uniform sampler2D Texture0;
+
+uniform float Strength;
+uniform float Radius;
+
+void main(void) {
+    vec4 tex = texture2D(Texture0, TexCoord0);
+    vec2 center = vec2(0.5, 0.5);
+    float dist = distance(TexCoord0, center);
+    float vignette = smoothstep(Radius, Radius - Strength, dist);
+    gl_FragColor = Color0 * tex * vec4(vec3(vignette), 1.0);
+}
+```
+
+**Attributes:**
+| Name | Type | Default | Min | Max |
+|------|------|---------|-----|-----|
+| Strength | Float | 0.4 | 0.0 | 1.0 |
+| Radius | Float | 0.8 | 0.3 | 1.5 |
+
+---
+
+## Chromatic Aberration
+
+Separates RGB channels for a glitch/retro effect.
+
+```glsl
+varying lowp vec4 Color0;
+varying mediump vec2 TexCoord0;
+uniform sampler2D Texture0;
+
+uniform float Amount;
+
+void main(void) {
+    vec2 dir = TexCoord0 - vec2(0.5);
+
+    float r = texture2D(Texture0, TexCoord0 + dir * Amount).r;
+    float g = texture2D(Texture0, TexCoord0).g;
+    float b = texture2D(Texture0, TexCoord0 - dir * Amount).b;
+    float a = texture2D(Texture0, TexCoord0).a;
+
+    gl_FragColor = Color0 * vec4(r, g, b, a);
+}
+```
+
+**Attributes:**
+| Name | Type | Default | Min | Max |
+|------|------|---------|-----|-----|
+| Amount | Float | 0.005 | 0.0 | 0.03 |
+
+---
+
+## Wave Distortion
+
+Animated wavy distortion effect.
+
+```glsl
+varying lowp vec4 Color0;
+varying mediump vec2 TexCoord0;
+uniform sampler2D Texture0;
+
+uniform float Time;
+uniform float Amplitude;
+uniform float Frequency;
+uniform float Speed;
+
+void main(void) {
+    vec2 uv = TexCoord0;
+    uv.x += sin(uv.y * Frequency + Time * Speed) * Amplitude;
+    uv.y += cos(uv.x * Frequency + Time * Speed) * Amplitude;
+    gl_FragColor = Color0 * texture2D(Texture0, uv);
+}
+```
+
+**Attributes:**
+| Name | Type | Default | Min | Max |
+|------|------|---------|-----|-----|
+| Time | Time (Auto) | - | - | - |
+| Amplitude | Float | 0.01 | 0.0 | 0.05 |
+| Frequency | Float | 15.0 | 1.0 | 50.0 |
+| Speed | Float | 0.05 | 0.01 | 0.2 |
+
+---
+
+## CRT Scanlines
+
+Retro CRT monitor effect with scanlines.
+
+```glsl
+varying lowp vec4 Color0;
+varying mediump vec2 TexCoord0;
+uniform sampler2D Texture0;
+
+uniform float Intensity;
+uniform float Count;
+
+void main(void) {
+    vec4 tex = texture2D(Texture0, TexCoord0);
+
+    // Scanline effect
+    float scanline = sin(TexCoord0.y * Count * 3.14159) * 0.5 + 0.5;
+    scanline = mix(1.0, scanline, Intensity);
+
+    gl_FragColor = Color0 * tex * vec4(vec3(scanline), 1.0);
+}
+```
+
+**Attributes:**
+| Name | Type | Default | Min | Max |
+|------|------|---------|-----|-----|
+| Intensity | Float | 0.3 | 0.0 | 1.0 |
+| Count | Float | 200.0 | 50.0 | 500.0 |
+
+---
+
+## Pixelate
+
+Reduces resolution for a retro pixel art effect.
+
+```glsl
+varying lowp vec4 Color0;
+varying mediump vec2 TexCoord0;
+uniform sampler2D Texture0;
+
+uniform float PixelSize;
+
+void main(void) {
+    vec2 uv = TexCoord0;
+    uv = floor(uv * PixelSize) / PixelSize;
+    gl_FragColor = Color0 * texture2D(Texture0, uv);
+}
+```
+
+**Attributes:**
+| Name | Type | Default | Min | Max |
+|------|------|---------|-----|-----|
+| PixelSize | Float | 100.0 | 10.0 | 300.0 |
+
+---
+
+## Edge Glow
+
+Makes edges glow based on color difference from neighbors.
+
+```glsl
+varying lowp vec4 Color0;
+varying mediump vec2 TexCoord0;
+uniform sampler2D Texture0;
+
+uniform float Thickness;
+uniform vec3 GlowColor;
+uniform float GlowStrength;
+
+void main(void) {
+    vec4 tex = texture2D(Texture0, TexCoord0);
+
+    // Sample neighbors
+    vec4 left = texture2D(Texture0, TexCoord0 + vec2(-Thickness, 0.0));
+    vec4 right = texture2D(Texture0, TexCoord0 + vec2(Thickness, 0.0));
+    vec4 up = texture2D(Texture0, TexCoord0 + vec2(0.0, -Thickness));
+    vec4 down = texture2D(Texture0, TexCoord0 + vec2(0.0, Thickness));
+
+    // Calculate edge strength
+    float edge = length(tex.rgb - left.rgb) + length(tex.rgb - right.rgb);
+    edge += length(tex.rgb - up.rgb) + length(tex.rgb - down.rgb);
+    edge = clamp(edge * GlowStrength, 0.0, 1.0);
+
+    // Add glow
+    vec3 result = tex.rgb + GlowColor * edge;
+
+    gl_FragColor = Color0 * vec4(result, tex.a);
+}
+```
+
+**Attributes:**
+| Name | Type | Default | Min | Max |
+|------|------|---------|-----|-----|
+| Thickness | Float | 0.003 | 0.001 | 0.01 |
+| GlowColor | Color | #00ffff | - | - |
+| GlowStrength | Float | 2.0 | 0.5 | 5.0 |
+
+---
+
+## Radial Blur
+
+Blur radiating from a center point (zoom blur effect).
+
+```glsl
+varying lowp vec4 Color0;
+varying mediump vec2 TexCoord0;
+uniform sampler2D Texture0;
+
+uniform vec2 Center;
+uniform float Strength;
+uniform float Samples;
+
+void main(void) {
+    vec2 dir = TexCoord0 - Center;
+    vec4 color = vec4(0.0);
+
+    for (float i = 0.0; i < 10.0; i++) {
+        if (i >= Samples) break;
+        float scale = 1.0 - Strength * (i / Samples);
+        color += texture2D(Texture0, Center + dir * scale);
+    }
+
+    color /= Samples;
+    gl_FragColor = Color0 * color;
+}
+```
+
+**Attributes:**
+| Name | Type | Default | Min | Max |
+|------|------|---------|-----|-----|
+| Center | Vec2 | 0.5, 0.5 | 0.0 | 1.0 |
+| Strength | Float | 0.1 | 0.0 | 0.3 |
+| Samples | Float | 8.0 | 4.0 | 10.0 |
+
+---
+
+## Combining Effects
+
+You can combine multiple effects in one shader:
+
+```glsl
+varying lowp vec4 Color0;
+varying mediump vec2 TexCoord0;
+uniform sampler2D Texture0;
+
+uniform vec2 PlayerPos;
+uniform float SpotlightRadius;
+uniform float VignetteStrength;
+uniform float Desaturation;
+
+void main(void) {
+    vec4 tex = texture2D(Texture0, TexCoord0);
+
+    // 1. Player spotlight
+    float playerDist = distance(TexCoord0, PlayerPos);
+    float spotlight = smoothstep(SpotlightRadius, SpotlightRadius * 0.5, playerDist);
+
+    // 2. Vignette
+    float screenDist = distance(TexCoord0, vec2(0.5));
+    float vignette = smoothstep(0.8, 0.3, screenDist);
+
+    // 3. Partial desaturation
+    float gray = dot(tex.rgb, vec3(0.299, 0.587, 0.114));
+    vec3 color = mix(tex.rgb, vec3(gray), Desaturation * (1.0 - spotlight));
+
+    // Combine: spotlight and vignette both affect brightness
+    float brightness = spotlight * vignette;
+    brightness = mix(0.2, 1.0, brightness);
+
+    gl_FragColor = Color0 * vec4(color * brightness, tex.a);
+}
+```
+
+**Attributes:**
+| Name | Type | Default |
+|------|------|---------|
+| PlayerPos | Player Position (Auto) | - |
+| SpotlightRadius | Float | 0.4 (0.1-1.0) |
+| VignetteStrength | Float | 0.5 (0-1) |
+| Desaturation | Float | 0.5 (0-1) |

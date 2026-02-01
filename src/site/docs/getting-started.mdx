@@ -1,0 +1,73 @@
+# Getting Started
+
+Isaac Shader Studio is a development environment for creating custom shaders
+for The Binding of Isaac: Repentance. The application provides a real-time
+preview using a built-in game reproduction that responds to your shader
+in real-time.
+
+## Quick Start
+
+1. Click the **New** button (or press `Alt+N`) to create a new shader
+2. Give your shader a name and optional description
+3. Edit the vertex and fragment shaders in their respective tabs
+4. Add attributes to control your shader dynamically
+5. Click **Run** (or press `Ctrl+Enter`) to compile and preview
+6. Adjust **Runtime Parameters** to fine-tune your effect
+7. Use **Save** (`Ctrl+S`) to store locally or **Export** (`Ctrl+E`) to generate mod files
+
+# Interface Overview
+
+## Left Panel
+
+The left panel contains all shader editing controls:
+
+### Shader Management
+- **Shader Dropdown** - Select from saved shaders or "No Shader" to disable
+- **Name Field** - Your shader's name (used in exports)
+- **Description Field** - Optional description for your shader
+
+### Action Buttons
+- **New** - Create a new shader (`Alt-N`)
+- **Run** - Compile and apply the shader (`Ctrl+Enter`)
+- **Save** - Save to browser localStorage (`Ctrl+S`)
+- **Export** - Generate Isaac mod files (`Ctrl+E`)
+- **Import** - Load shader from files (`Ctrl+I`)
+
+### Editor Tabs
+- **Vertex Shader** - Edit the vertex shader
+- **Fragment Shader** - Edit the fragment shader
+- **Parameters** - Define custom uniform parameters
+
+## Right Panel
+
+The right panel shows the live preview:
+
+### Runtime Parameters
+_May be hidden if no parameters are configurable at runtime for the current shader._
+- Sliders and controls for your shader attributes
+- Adjust values in real-time without recompiling
+- Changes are reflected instantly in the preview
+
+### Game Preview
+- Live rendering of The Binding of Isaac gameplay
+- Your shader is applied to the game output
+- Use WASD and arrow keys, or your connected gamepad to move the player
+- Player position can be used as a shader input
+
+### Console
+- Compilation status messages
+- Error messages with line numbers
+- Click errors to jump to the problematic line
+
+# Workflow Tips
+
+- **Start with the default shader** - The passthrough shader is a good starting point
+- **Make small changes** - Compile frequently to catch errors early
+- **Use Runtime Parameters** - Adjust values without recompiling
+- **Save often** - Shaders are saved in your browser and persist between sessions
+
+# Browser Compatibility
+
+Isaac Shader Studio requires WebGL 2.0 support. Most modern browsers
+(Chrome, Firefox, Edge, Safari) support this. If you see a black screen,
+check that WebGL is enabled in your browser settings.

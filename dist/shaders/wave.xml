@@ -1,0 +1,68 @@
+<shaders>
+  <!-- Animated sine wave distortion effect with adjustable amplitude, frequency, and speed -->
+  <shader name="WaveDistortion" description="Animated sine wave distortion effect with adjustable amplitude, frequency, and speed">
+    <parameters>
+      <param name="Time" type="float" studioType="time"/>
+      <param name="Amplitude" type="float" default="0.02" min="0.0" max="0.1" step="0.005"/>
+      <param name="Frequency" type="float" default="10.0" min="1.0" max="50.0" step="1.0"/>
+      <param name="Speed" type="float" default="0.1" min="0.0" max="2.0" step="0.05"/>
+    </parameters>
+    <vertex><![CDATA[
+attribute vec3 Position;
+attribute vec4 Color;
+attribute vec2 TexCoord;
+attribute vec4 RenderData;
+attribute float Scale;
+
+attribute float Time;
+attribute float Amplitude;
+attribute float Frequency;
+attribute float Speed;
+
+uniform mat4 Transform;
+
+varying vec4 Color0;
+varying vec2 TexCoord0;
+varying vec4 RenderDataOut;
+varying float ScaleOut;
+
+varying float TimeOut;
+varying float AmplitudeOut;
+varying float FrequencyOut;
+varying float SpeedOut;
+
+void main(void) {
+    Color0 = Color;
+    TexCoord0 = TexCoord;
+    RenderDataOut = RenderData;
+    ScaleOut = Scale;
+    TimeOut = Time;
+    AmplitudeOut = Amplitude;
+    FrequencyOut = Frequency;
+    SpeedOut = Speed;
+    gl_Position = Transform * vec4(Position.xyz, 1.0);
+}
+    ]]></vertex>
+    <fragment><![CDATA[
+varying lowp vec4 Color0;
+varying mediump vec2 TexCoord0;
+varying lowp vec4 RenderDataOut;
+varying lowp float ScaleOut;
+
+varying lowp float TimeOut;
+varying lowp float AmplitudeOut;
+varying lowp float FrequencyOut;
+varying lowp float SpeedOut;
+
+uniform sampler2D Texture0;
+
+void main(void) {
+    vec2 uv = TexCoord0;
+    float animTime = TimeOut * SpeedOut;
+    uv.x += sin(uv.y * FrequencyOut + animTime) * AmplitudeOut;
+    uv.y += cos(uv.x * FrequencyOut + animTime) * AmplitudeOut;
+    gl_FragColor = Color0 * texture2D(Texture0, uv);
+}
+    ]]></fragment>
+  </shader>
+</shaders>

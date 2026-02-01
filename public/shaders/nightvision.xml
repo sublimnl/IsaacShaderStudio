@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<shaders>
+  <shader name="NightVision" description="Night vision shader for The Binding of Isaac">
+    <parameters>
+      <param name="Enabled" type="float" studioType="boolean" default="1.0" />
+      <param name="Time" type="float" studioType="time" fps="60" />
+    </parameters>
+    <vertex><![CDATA[
+      attribute vec3 Position;    // World position of the vertex
+      attribute vec4 Color;       // Color tint from the game
+      attribute vec2 TexCoord;    // UV coordinates (0,0 top-left to 1,1 bottom-right)
+      attribute vec4 RenderData;  // xy=offset, zw=screen dimensions in pixels
+      attribute float Scale;      // Room zoom level
+      
+      // Custom parameters
+      attribute float Enabled;    // Boolean parameter (0.0 or 1.0)
+      attribute float Time;       // Auto-incrementing frame counter
+      
+      // Standard varyings that all Isaac shaders need
+      varying vec4 Color0;        // Pass color to fragment shader
+      varying vec2 TexCoord0;     // Pass UV coordinates to fragment shader
+      varying vec4 RenderDataOut; // Pass screen dimensions to fragment shader
+      varying float ScaleOut;     // Pass zoom scale to fragment shader
+      
+      // Custom parameter varyings
+      varying float EnabledOut;   // Pass enabled state to fragment shader
+      varying float TimeOut;      // Pass time to fragment shader for animation
+      
+      // The transformation matrix
+      uniform mat4 Transform;
+      
+      void main(void) {
+          // Pass all data through to fragment shader
+          RenderDataOut = RenderData;
+          ScaleOut = Scale;
+          EnabledOut = Enabled;
+          TimeOut = Time;
+          Color0 = Color;
+          TexCoord0 = TexCoord;
+      
+          // Transform vertex position to screen space
+          gl_Position = Transform * vec4(Position.xyz, 1.0);
+      }
+    ]]></vertex>
+    <fragment><![CDATA[
+      // Night vision shader for The Binding of Isaac
+      // Creates green monochrome effect with scan lines and noise
+      
+      // Input varyings from vertex shader
+      varying lowp vec4 Color0;        // Game's color tint
+      varying mediump vec2 TexCoord0;  // UV coordinates (0,0 to 1,1)
+      varying lowp vec4 RenderDataOut; // Screen dimensions in zw components
+      varying lowp float ScaleOut;     // Zoom scale
+      varying lowp float EnabledOut;   // Effect enable/disable toggle
+      varying lowp float TimeOut;      // Time for animation
+      
+      // The game's rendered frame
+      uniform sampler2D Texture0;
+      
+      // Gaussian blur helper function
+      // Calculates probability density for Gaussian distribution
+      // Used to create smooth blur kernel weights
+      float normpdf(in float x, in float sigma) {
+          return 0.39894 * exp(-0.5 * x * x / (sigma * sigma)) / sigma;
+      }
+      
+      // Simple hash function for pseudo-random noise
+      // Takes a float input and returns pseudo-random value 0-1
+      float hash(in float n) {
+          return fract(sin(n) * 43758.5453123);
+      }
+      
+      void main() {
+          // Only apply night vision effect if enabled
+          if (EnabledOut > 0.0) {
+              // GAUSSIAN BLUR SETUP
+              const int mSize = 21;  // Total kernel size (must be odd)
+              const int kSize = 10;  // Half kernel size (mSize-1)/2
+              float kernel[mSize];   // Blur kernel weights array
+              vec3 final_colour = vec3(0.5); // Initialize blur accumulator
+      
+              // Create Gaussian blur kernel
+              float sigma = 7.0;     // Blur strength (higher = more blur)
+              float Z = 0.0;         // Normalization factor
+      
+              // Fill kernel array with Gaussian weights
+              // Symmetric around center (kSize)
+              for (int j = 0; j <= kSize; ++j) {
+                  kernel[kSize + j] = kernel[kSize - j] = normpdf(float(j), sigma);
+              }
+      
+              // Calculate normalization factor (sum of all weights)
+              for (int j = 0; j < mSize; ++j) {
+                  Z += kernel[j];
+              }
+      
+              // APPLY GAUSSIAN BLUR
+              // Sample neighboring pixels and weight them by kernel
+              for (int i = -kSize; i <= kSize; ++i) {
+                  for (int j = -kSize; j <= kSize; ++j) {
+                      // Sample texture at offset position
+                      // gl_FragCoord.xy gives current pixel in screen space
+                      vec4 tex = texture2D(Texture0, (gl_FragCoord.xy + vec2(float(i), float(j))) / RenderDataOut.zw);
+      
+                      // Accumulate weighted color
+                      final_colour += kernel[kSize + j] * kernel[kSize + i] * tex.rgb;
+                  }
+              }
+      
+              // NOISE GENERATION
+              // Convert fragment coord to normalized screen space (-1 to 1)
+              vec2 p = gl_FragCoord.xy / RenderDataOut.zw;  // 0-1 range
+              vec2 u = p * 2.0 - 1.0;                       // -1 to 1 range
+      
+              // Account for screen aspect ratio
+              vec2 n = u * vec2(RenderDataOut.z / RenderDataOut.w, 1.0);
+      
+              // Get base color from original texture
+              vec3 c = texture2D(Texture0, TexCoord0).xyz;
+      
+              // Add animated noise based on position and time
+              // hash() creates pseudo-random values that change over time
+              c += hash((hash(n.x) + n.y) * (TimeOut * 0.01)) * 0.2;
+      
+              // SCAN LINES EFFECT
+              // Create horizontal scan line pattern
+              // Uses the cubed normal coordinates for non-linear distortion
+              c *= smoothstep(length(n * n * n * vec2(0.075, 0.4)), 1.0, 0.75);
+      
+              // CONVERT TO NIGHT VISION GREEN
+              // Convert to grayscale using luminance weights (0.2, 0.7152, 0.0722)
+              // Then tint green (multiply by green-heavy color)
+              c = dot(c, vec3(0.2, 0.7152, 0.0722)) * vec3(0.0, 1.5, 1.1);
+      
+              // Final output - preserve game's color tinting
+              gl_FragColor = vec4(c, 1.0) * Color0;
+          } else {
+              // When disabled, just pass through original fragment color
+              gl_FragColor = Color0 * texture2D(Texture0, TexCoord0);
+          }
+      }
+    ]]></fragment>
+  </shader>
+</shaders>

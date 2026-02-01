@@ -1,0 +1,1095 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<link rel="stylesheet" href="./styles.css" />
+		<link rel="manifest" href="./manifest.json" />
+		<title>Isaac Shader Studio</title>
+		<style>
+			* {
+				margin: 0;
+				padding: 0;
+				box-sizing: border-box;
+			}
+
+			body {
+				font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+				background: #1e1e1e;
+				color: #d4d4d4;
+				overflow: hidden;
+			}
+
+			.app-container {
+				display: flex;
+				height: 100vh;
+			}
+
+			.left-panel {
+				width: 40%;
+				min-width: 400px;
+				display: flex;
+				flex-direction: column;
+				border-right: 1px solid #3e3e3e;
+				overflow: hidden;
+			}
+
+			.right-panel {
+				flex: 1;
+				display: flex;
+				flex-direction: column;
+				overflow: hidden;
+			}
+
+			.toolbar {
+				background: #252526;
+				padding: 10px;
+				border-bottom: 1px solid #3e3e3e;
+				display: flex;
+				align-items: center;
+				gap: 10px;
+			}
+
+			.toolbar h1 {
+				font-size: 16px;
+				color: #4a9eff;
+				flex-grow: 1;
+			}
+
+			.shader-config {
+				background: #1e1e1e;
+				border-bottom: 1px solid #3e3e3e;
+				padding: 10px;
+			}
+
+			.config-row {
+				display: flex;
+				gap: 10px;
+				align-items: center;
+				margin-bottom: 8px;
+			}
+
+			.config-row label {
+				font-size: 12px;
+				color: #888;
+				min-width: 100px;
+			}
+
+			.params-builder {
+				background: #1e1e1e;
+				padding: 10px;
+			}
+
+			.params-header {
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+				margin-bottom: 10px;
+			}
+
+			.params-header h3 {
+				font-size: 13px;
+				color: #4a9eff;
+			}
+
+			.add-param-btn {
+				background: #0e639c;
+				color: white;
+				border: none;
+				padding: 4px 12px;
+				border-radius: 3px;
+				cursor: pointer;
+				font-size: 12px;
+				font-family: inherit;
+			}
+
+			.add-param-btn:hover {
+				background: #1177bb;
+			}
+
+			.param-item {
+				display: flex;
+				gap: 8px;
+				align-items: center;
+				margin-bottom: 8px;
+				padding: 6px;
+				background: #1e1e1e;
+				border-radius: 3px;
+			}
+
+			.param-item input[type="text"] {
+				background: #3e3e3e;
+				border: 1px solid #555;
+				color: #d4d4d4;
+				padding: 4px 8px;
+				border-radius: 3px;
+				font-size: 12px;
+				font-family: inherit;
+				flex: 1;
+			}
+
+			.param-item select {
+				background: #3e3e3e;
+				border: 1px solid #555;
+				color: #d4d4d4;
+				padding: 4px 8px;
+				border-radius: 3px;
+				font-size: 12px;
+				font-family: inherit;
+				min-width: 80px;
+			}
+
+			.remove-param-btn {
+				background: #aa3333;
+				color: white;
+				border: none;
+				padding: 4px 8px;
+				border-radius: 3px;
+				cursor: pointer;
+				font-size: 11px;
+			}
+
+			.remove-param-btn:hover {
+				background: #cc4444;
+			}
+
+			/* Editor tabs */
+			.editor-tabs-container {
+				flex: 1;
+				display: flex;
+				flex-direction: column;
+				min-height: 0;
+			}
+
+			.editor-tabs {
+				display: flex;
+				gap: 4px;
+				background: #252526;
+				padding: 8px 10px 0 10px;
+				border-bottom: 1px solid #3c3c3c;
+			}
+
+			.editor-tab {
+				background: #2d2d2d;
+				border: 1px solid #3c3c3c;
+				border-bottom: none;
+				color: #888;
+				padding: 8px 16px;
+				cursor: pointer;
+				font-size: 12px;
+				border-radius: 4px 4px 0 0;
+				position: relative;
+				top: 1px;
+				transition: background 0.15s, color 0.15s;
+			}
+
+			.editor-tab:hover {
+				background: #383838;
+				color: #ccc;
+			}
+
+			.editor-tab.active {
+				background: #1e1e1e;
+				color: #4a9eff;
+				border-bottom: 1px solid #1e1e1e;
+			}
+
+			.editor-tab-content {
+				flex: 1;
+				position: relative;
+				min-height: 0;
+				overflow: hidden;
+			}
+
+			.editor-tab-pane {
+				display: none;
+				position: absolute;
+				top: 0;
+				left: 0;
+				right: 0;
+				bottom: 0;
+				flex-direction: column;
+			}
+
+			.editor-tab-pane.active {
+				display: flex;
+			}
+
+			.editor-tab-pane .params-builder {
+				flex: 1;
+				max-height: none;
+				overflow-y: auto;
+			}
+
+			.editor {
+				flex: 1;
+				position: relative;
+				min-height: 100px;
+			}
+
+			/* Shader error line highlight */
+			.shader-error-line {
+				position: absolute;
+				background: rgba(255, 0, 0, 0.3) !important;
+				border-left: 3px solid #ff4444;
+			}
+
+			.viewport-container {
+				flex: 1;
+				display: flex;
+				flex-direction: column;
+				background: #000;
+				min-height: 0;
+			}
+
+			.viewport {
+				flex: 1;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				background: #000;
+				position: relative;
+				overflow: hidden;
+			}
+
+			.game, #glCanvas {
+				image-rendering: pixelated;
+				max-width: 100%;
+				max-height: 100%;
+			}
+
+			.game {
+				display: none;
+			}
+
+			.viewport-controls {
+				position: absolute;
+				bottom: 10px;
+				left: 10px;
+				background: rgba(0, 0, 0, 0.8);
+				padding: 8px 12px;
+				border-radius: 4px;
+				display: none;
+				gap: 15px;
+				align-items: center;
+				font-size: 12px;
+			}
+
+			.viewport-controls.active {
+				display: flex;
+			}
+
+			.control-btn {
+				background: transparent;
+				border: 1px solid #666;
+				color: #fff;
+				width: 28px;
+				height: 28px;
+				padding: 0;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				cursor: pointer;
+				border-radius: 3px;
+			}
+
+			.control-btn:hover {
+				background: rgba(255, 255, 255, 0.1);
+				border-color: #888;
+			}
+
+			.stats {
+				display: flex;
+				gap: 15px;
+				color: #aaa;
+			}
+
+			.stat-item {
+				display: flex;
+				flex-direction: column;
+				gap: 2px;
+			}
+
+			.stat-label {
+				font-size: 9px;
+				text-transform: uppercase;
+				color: #666;
+			}
+
+			.stat-value {
+				font-size: 12px;
+				color: #4a9eff;
+				font-weight: bold;
+			}
+
+			.params-panel {
+				padding: 10px;
+				background: #1e1e1e;
+				border-bottom: 1px solid #3e3e3e;
+				display: none;
+				max-height: 150px;
+				overflow-y: auto;
+				flex-shrink: 0;
+			}
+
+			.params-panel.active {
+				display: block;
+			}
+
+			.param-control {
+				margin-bottom: 10px;
+				display: flex;
+				align-items: center;
+				gap: 10px;
+			}
+
+			.param-label {
+				font-size: 12px;
+				color: #888;
+				min-width: 100px;
+			}
+
+			.param-input {
+				background: #3e3e3e;
+				color: #d4d4d4;
+				padding: 4px 8px;
+				border: 1px solid #555;
+				border-radius: 3px;
+				font-size: 12px;
+				font-family: inherit;
+				flex: 1;
+			}
+
+			.param-value {
+				font-size: 11px;
+				color: #4a9eff;
+				min-width: 80px;
+				font-family: monospace;
+			}
+
+			.param-checkbox {
+				width: 40px;
+				height: 20px;
+				cursor: pointer;
+				accent-color: #0e639c;
+			}
+
+			/* Color picker styles */
+			.color-picker-wrapper {
+				position: relative;
+				display: inline-flex;
+				align-items: center;
+			}
+
+			.color-swatch {
+				width: 32px;
+				height: 24px;
+				border-radius: 4px;
+				border: 2px solid #555;
+				cursor: pointer;
+				transition: border-color 0.2s, transform 0.1s;
+				box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+			}
+
+			.color-swatch:hover {
+				border-color: #888;
+				transform: scale(1.05);
+			}
+
+			.color-input {
+				position: absolute;
+				left: 0;
+				top: 0;
+				width: 32px;
+				height: 24px;
+				opacity: 0;
+				cursor: pointer;
+			}
+
+			.console {
+				height: 120px;
+				min-height: 100px;
+				background: #1e1e1e;
+				border-top: 1px solid #3e3e3e;
+				overflow-y: auto;
+				font-size: 12px;
+				padding: 10px;
+				flex-shrink: 0;
+
+			}
+
+			.console-entry {
+				padding: 4px 0;
+				border-bottom: 1px solid #2e2e2e;
+			}
+
+			.console-entry.error {
+				color: #f48771;
+			}
+
+			.console-entry.success {
+				color: #89d185;
+			}
+
+			.console-entry.info {
+				color: #4a9eff;
+			}
+
+			.console-entry.warning {
+				color: #dcdcaa;
+			}
+
+			.console-timestamp {
+				color: #666;
+				font-size: 11px;
+				margin-right: 8px;
+			}
+
+			select {
+				background: #3e3e3e;
+				color: #d4d4d4;
+				padding: 6px 10px;
+				border: 1px solid #555;
+				border-radius: 3px;
+				font-size: 12px;
+				font-family: inherit;
+				cursor: pointer;
+				flex: 1;
+			}
+
+			button {
+				background: #0e639c;
+				color: white;
+				border: none;
+				padding: 8px 16px;
+				border-radius: 3px;
+				cursor: pointer;
+				font-size: 13px;
+				font-family: inherit;
+				transition: background 0.2s;
+			}
+
+			button:hover {
+				background: #1177bb;
+			}
+
+			button:disabled {
+				background: #555;
+				cursor: not-allowed;
+			}
+
+			::-webkit-scrollbar {
+				width: 10px;
+				height: 10px;
+			}
+
+			::-webkit-scrollbar-track {
+				background: #1e1e1e;
+			}
+
+			::-webkit-scrollbar-thumb {
+				background: #424242;
+				border-radius: 5px;
+			}
+
+			::-webkit-scrollbar-thumb:hover {
+				background: #4e4e4e;
+			}
+
+			.loader {
+				position: absolute;
+				top: 50%;
+				left: 50%;
+				transform: translate(-50%, -50%);
+				z-index: 100;
+			}
+
+			.loader[hidden] {
+				display: none;
+			}
+
+			.loader.fade-out {
+				animation: fadeOut 0.5s forwards;
+			}
+
+			@keyframes fadeOut {
+				to {
+					opacity: 0;
+					visibility: hidden;
+				}
+			}
+
+			#buildInfo {
+				position: absolute;
+				bottom: 5px;
+				right: 10px;
+				font-size: 10px;
+				color: #666;
+			}
+
+			/* Modal Styles */
+			.modal-overlay {
+				position: fixed;
+				top: 0;
+				left: 0;
+				width: 100%;
+				height: 100%;
+				background: rgba(0, 0, 0, 0.8);
+				z-index: 1000;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+			}
+
+			.modal-content {
+				background: #1e1e1e;
+				border: 1px solid #3c3c3c;
+				border-radius: 8px;
+				width: 90%;
+				max-width: 1200px;
+				height: 80%;
+				display: flex;
+				flex-direction: column;
+				box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+			}
+
+			.modal-header {
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+				padding: 15px 20px;
+				border-bottom: 1px solid #3c3c3c;
+			}
+
+			.modal-header h2 {
+				margin: 0;
+				font-size: 18px;
+				color: #e0e0e0;
+			}
+
+			.modal-close {
+				background: none;
+				border: none;
+				color: #888;
+				font-size: 24px;
+				cursor: pointer;
+				padding: 0;
+				line-height: 1;
+			}
+
+			.modal-close:hover {
+				color: #fff;
+			}
+
+			.modal-body {
+				flex: 1;
+				padding: 15px;
+				overflow: hidden;
+				display: flex;
+				flex-direction: column;
+			}
+
+			.modal-tabs {
+				display: flex;
+				gap: 4px;
+				border-bottom: 1px solid #3c3c3c;
+				padding-bottom: 0;
+				margin-bottom: 0;
+			}
+
+			.modal-tab {
+				background: #2d2d2d;
+				border: 1px solid #3c3c3c;
+				border-bottom: none;
+				color: #888;
+				padding: 10px 20px;
+				font-size: 13px;
+				font-family: inherit;
+				cursor: pointer;
+				border-radius: 6px 6px 0 0;
+				transition: all 0.2s;
+				position: relative;
+				top: 1px;
+			}
+
+			.modal-tab:hover {
+				background: #383838;
+				color: #ccc;
+			}
+
+			.modal-tab.active {
+				background: #1e1e1e;
+				color: #4a9eff;
+				border-bottom: 1px solid #1e1e1e;
+			}
+
+			.modal-tab-content {
+				flex: 1;
+				position: relative;
+				border: 1px solid #3c3c3c;
+				border-top: none;
+				border-radius: 0 0 4px 4px;
+				overflow: hidden;
+			}
+
+			.modal-tab-pane {
+				display: none;
+				position: absolute;
+				top: 0;
+				left: 0;
+				right: 0;
+				bottom: 0;
+			}
+
+			.modal-tab-pane.active {
+				display: block;
+			}
+
+			.modal-editor {
+				width: 100%;
+				height: 100%;
+			}
+
+			.lua-custom-notice {
+				background: #4a3c00;
+				border: 1px solid #8b7500;
+				color: #ffd700;
+				padding: 8px 12px;
+				margin-bottom: 8px;
+				border-radius: 4px;
+				font-size: 12px;
+			}
+
+			.modal-footer {
+				padding: 15px 20px;
+				border-top: 1px solid #3c3c3c;
+				display: flex;
+				justify-content: flex-end;
+				gap: 10px;
+			}
+
+			.download-btn {
+				background: #0e639c;
+				color: white;
+				border: none;
+				padding: 10px 20px;
+				border-radius: 4px;
+				cursor: pointer;
+				font-size: 14px;
+			}
+
+			.download-btn:hover {
+				background: #1177bb;
+			}
+
+			/* Error Popup Styles */
+			.error-popup-overlay {
+				position: fixed;
+				top: 0;
+				left: 0;
+				width: 100%;
+				height: 100%;
+				background: rgba(0, 0, 0, 0.7);
+				z-index: 2000;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+			}
+
+			.error-popup {
+				background: #2d2d2d;
+				border: 1px solid #f48771;
+				border-radius: 8px;
+				padding: 25px 35px;
+				text-align: center;
+				max-width: 400px;
+				box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+			}
+
+			.error-popup-icon {
+				font-size: 48px;
+				margin-bottom: 15px;
+			}
+
+			.error-popup-message {
+				color: #e0e0e0;
+				font-size: 14px;
+				margin-bottom: 20px;
+				line-height: 1.5;
+			}
+
+			.error-popup-btn {
+				background: #f48771;
+				color: #1e1e1e;
+				border: none;
+				padding: 10px 30px;
+				border-radius: 4px;
+				cursor: pointer;
+				font-size: 14px;
+				font-weight: bold;
+				font-family: inherit;
+			}
+
+			.error-popup-btn:hover {
+				background: #ff9d8a;
+			}
+
+			/* Import Shader Modal Styles */
+			.import-modal-content {
+				background: #1e1e1e;
+				border: 1px solid #3c3c3c;
+				border-radius: 8px;
+				width: 90%;
+				max-width: 600px;
+				max-height: 80%;
+				display: flex;
+				flex-direction: column;
+				box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+			}
+
+			.import-drop-zone {
+				border: 2px dashed #555;
+				border-radius: 8px;
+				padding: 40px 20px;
+				text-align: center;
+				cursor: pointer;
+				transition: all 0.2s ease;
+				background: #252526;
+				margin-bottom: 15px;
+			}
+
+			.import-drop-zone:hover,
+			.import-drop-zone.drag-over {
+				border-color: #4a9eff;
+				background: #2a2d3e;
+			}
+
+			.import-drop-zone.drag-over {
+				border-style: solid;
+			}
+
+			.import-drop-icon {
+				font-size: 48px;
+				margin-bottom: 15px;
+				opacity: 0.7;
+			}
+
+			.import-drop-text {
+				color: #888;
+				font-size: 14px;
+				margin-bottom: 10px;
+			}
+
+			.import-drop-subtext {
+				color: #666;
+				font-size: 12px;
+			}
+
+			.import-file-input {
+				display: none;
+			}
+
+			.import-validation-error {
+				background: rgba(244, 135, 113, 0.1);
+				border: 1px solid #f48771;
+				border-radius: 4px;
+				padding: 12px;
+				margin-bottom: 15px;
+				color: #f48771;
+				font-size: 12px;
+			}
+
+			.import-shader-list {
+				max-height: 300px;
+				overflow-y: auto;
+				border: 1px solid #3c3c3c;
+				border-radius: 4px;
+				background: #252526;
+			}
+
+			.import-shader-item {
+				display: flex;
+				align-items: center;
+				padding: 12px 15px;
+				border-bottom: 1px solid #3c3c3c;
+				transition: background 0.15s;
+			}
+
+			.import-shader-item:last-child {
+				border-bottom: none;
+			}
+
+			.import-shader-item:hover {
+				background: #2a2d3e;
+			}
+
+			.import-shader-checkbox {
+				width: 18px;
+				height: 18px;
+				margin-right: 12px;
+				cursor: pointer;
+				accent-color: #4a9eff;
+			}
+
+			.import-shader-info {
+				flex: 1;
+			}
+
+			.import-shader-name {
+				color: #e0e0e0;
+				font-size: 14px;
+				font-weight: 500;
+			}
+
+			.import-shader-desc {
+				color: #888;
+				font-size: 12px;
+				margin-top: 3px;
+			}
+
+			.import-shader-count {
+				color: #888;
+				font-size: 12px;
+				margin-bottom: 10px;
+			}
+
+			.import-select-all {
+				display: flex;
+				align-items: center;
+				padding: 8px 15px;
+				background: #2d2d2d;
+				border-bottom: 1px solid #3c3c3c;
+				font-size: 12px;
+				color: #888;
+			}
+
+			.import-select-all label {
+				cursor: pointer;
+				display: flex;
+				align-items: center;
+			}
+
+			.import-select-all input {
+				margin-right: 8px;
+			}
+
+			.import-btn {
+				background: #0e639c;
+				color: white;
+				border: none;
+				padding: 10px 24px;
+				border-radius: 4px;
+				cursor: pointer;
+				font-size: 14px;
+				font-family: inherit;
+			}
+
+			.import-btn:hover {
+				background: #1177bb;
+			}
+
+			.import-btn:disabled {
+				background: #555;
+				cursor: not-allowed;
+				opacity: 0.7;
+			}
+
+			.import-cancel-btn {
+				background: transparent;
+				color: #888;
+				border: 1px solid #555;
+				padding: 10px 24px;
+				border-radius: 4px;
+				cursor: pointer;
+				font-size: 14px;
+				font-family: inherit;
+			}
+
+			.import-cancel-btn:hover {
+				background: #333;
+				color: #ccc;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="app-container">
+			<div class="left-panel">
+				<div class="toolbar">
+					<h1>Isaac Shader Studio</h1>
+					<button id="viewModBtn">View Mod</button>
+					<button id="compileBtn">Compile & Run</button>
+					<button id="saveShaderBtn">Save Shader</button>
+				</div>
+
+				<div class="shader-config">
+					<div class="config-row">
+						<label>Load Shader:</label>
+						<select id="exampleSelect">
+							<option value="">-- New Shader --</option>
+							<!-- Options populated dynamically -->
+						</select>
+						<button id="deleteShaderBtn" style="display: none; background: #8b0000; padding: 6px 10px;" title="Delete saved shader">&#x1F5D1;</button>
+					</div>
+
+					<div class="config-row">
+						<label>Shader Name:</label>
+						<input type="text" id="shaderName" placeholder="Shader name..." style="background: #3e3e3e; color: #d4d4d4; border: 1px solid #555; padding: 6px 10px; border-radius: 3px; font-size: 12px; font-family: inherit; flex: 1;">
+					</div>
+					<div class="config-row">
+						<label>Description:</label>
+						<input type="text" id="shaderDescription" placeholder="Optional description..." style="background: #3e3e3e; color: #d4d4d4; border: 1px solid #555; padding: 6px 10px; border-radius: 3px; font-size: 12px; font-family: inherit; flex: 1;">
+					</div>
+				</div>
+
+				<div class="editor-tabs-container">
+					<div class="editor-tabs">
+						<button class="editor-tab active" data-editor-tab="vertex">Vertex Shader</button>
+						<button class="editor-tab" data-editor-tab="fragment">Fragment Shader</button>
+						<button class="editor-tab" data-editor-tab="params">Parameters</button>
+					</div>
+					<div class="editor-tab-content">
+						<div class="editor-tab-pane" data-editor-tab="params">
+							<div class="params-builder">
+								<div class="params-header">
+									<h3>Parameters</h3>
+									<button class="add-param-btn" id="addParamBtn">+ Add Parameter</button>
+								</div>
+								<div id="paramsList"></div>
+							</div>
+						</div>
+						<div class="editor-tab-pane active" data-editor-tab="vertex">
+							<div class="editor" id="vertexEditor"></div>
+						</div>
+						<div class="editor-tab-pane" data-editor-tab="fragment">
+							<div class="editor" id="fragmentEditor"></div>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<div class="right-panel">
+				<div class="toolbar">
+					<h1>Game Preview</h1>
+				</div>
+				<div class="params-panel" id="paramsPanel"></div>
+				<div class="viewport-container">
+					<div class="viewport">
+						<canvas class="game" width="1768" height="1144"></canvas>
+						<canvas id="glCanvas" width="442" height="286" tabindex="1"></canvas>
+						<div class="loader">
+							<progress value="0" max="100"></progress>
+						</div>
+						<div class="viewport-controls" id="viewportControls">
+							<button class="control-btn" id="playPauseBtn" title="Play/Pause">&#9654;</button>
+							<div class="stats">
+								<div class="stat-item">
+									<span class="stat-label">FPS</span>
+									<span class="stat-value" id="fpsDisplay">0</span>
+								</div>
+								<div class="stat-item">
+									<span class="stat-label">Frame</span>
+									<span class="stat-value" id="frameDisplay">0</span>
+								</div>
+								<div class="stat-item">
+									<span class="stat-label">Player</span>
+									<span class="stat-value" id="playerPosDisplay">0, 0</span>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+				<div class="console" id="shaderConsole"></div>
+			</div>
+		</div>
+
+		<div id="buildInfo"></div>
+
+		<!-- View Mod Modal -->
+		<div id="viewModModal" class="modal-overlay" style="display: none;">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h2>Export Mod</h2>
+					<button id="closeModalBtn" class="modal-close">&times;</button>
+				</div>
+				<div class="modal-body">
+					<div class="modal-tabs">
+						<button class="modal-tab active" data-tab="metadata">metadata.xml</button>
+						<button class="modal-tab" data-tab="lua">main.lua</button>
+						<button class="modal-tab" data-tab="xml">content/shaders.xml</button>
+					</div>
+					<div class="modal-tab-content">
+						<div class="modal-tab-pane active" data-tab="metadata">
+							<div id="metadataEditor" class="modal-editor"></div>
+						</div>
+						<div class="modal-tab-pane" data-tab="lua">
+							<div id="luaCustomNotice" class="lua-custom-notice" style="display: none;">
+								This Lua code is pre-generated for this example shader and may not reflect changes you've made to the shader code or parameters.
+							</div>
+							<div id="luaEditor" class="modal-editor"></div>
+						</div>
+						<div class="modal-tab-pane" data-tab="xml">
+							<div id="xmlEditor" class="modal-editor"></div>
+						</div>
+					</div>
+				</div>
+				<div class="modal-footer">
+					<button id="downloadModBtn" class="download-btn">Download Mod (.zip)</button>
+				</div>
+			</div>
+		</div>
+
+		<!-- Import Shader Modal -->
+		<div id="importShaderModal" class="modal-overlay" style="display: none;">
+			<div class="import-modal-content">
+				<div class="modal-header">
+					<h2>Import Shader</h2>
+					<button id="closeImportModalBtn" class="modal-close">&times;</button>
+				</div>
+				<div class="modal-body">
+					<!-- Drop zone for file selection -->
+					<div id="importDropZone" class="import-drop-zone">
+						<div class="import-drop-icon">📁</div>
+						<div class="import-drop-text">Click to select files, or drag and drop here</div>
+						<div class="import-drop-subtext">Supports shaders.xml or .vs/.fs file pairs</div>
+						<input type="file" id="importFileInput" class="import-file-input" accept=".xml,.vs,.fs" multiple>
+					</div>
+
+					<!-- Validation error message (hidden by default) -->
+					<div id="importValidationError" class="import-validation-error" style="display: none;"></div>
+
+					<!-- Shader list (hidden until file is loaded) -->
+					<div id="importShaderListContainer" style="display: none;">
+						<div id="importShaderCount" class="import-shader-count"></div>
+						<div class="import-shader-list">
+							<div class="import-select-all">
+								<label>
+									<input type="checkbox" id="importSelectAll" checked>
+									Select All
+								</label>
+							</div>
+							<div id="importShaderList"></div>
+						</div>
+					</div>
+				</div>
+				<div class="modal-footer">
+					<button id="cancelImportBtn" class="import-cancel-btn">Cancel</button>
+					<button id="importShadersBtn" class="import-btn" disabled>Import Selected</button>
+				</div>
+			</div>
+		</div>
+
+		<!-- Ace Editor CDN -->
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.2/ace.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.2/mode-glsl.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.2/mode-lua.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.2/mode-xml.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.2/theme-monokai.js"></script>
+
+		<!-- JSZip for mod export -->
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+		<!-- Game Script -->
+		<script type='text/javascript' src='main.js'></script>
+	</body>
+</html>

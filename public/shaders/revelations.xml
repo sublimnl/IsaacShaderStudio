@@ -1,0 +1,1002 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<shaders>
+    <!-- ================================================================
+         REVELATIONS COLOR CORRECTION SHADER
+         Professional-grade color grading for The Binding of Isaac
+         Features: Levels, RGB curves, Color boost, Shadows/Midtones/Highlights
+         ================================================================ -->
+    <shader name="RevColorCorrection" description="Advanced color correction with levels, curves, and selective color boost">
+        <parameters>
+            <param name="ActiveIn" type="float"/>
+            <param name="ShadRGB_Wgt" type="vec4"/>
+            <param name="MidRGB_Wgt" type="vec4"/>
+            <param name="HighRGB_Wgt" type="vec4"/>
+            <param name="RGB" type="vec3"/>
+            <param name="ContrLightSat_Legacy" type="vec4"/>
+            <param name="Levels" type="vec3"/>
+            <param name="ColBoostSelection" type="vec4"/> 
+            <param name="ColBoostRGBSat" type="vec4"/>
+        </parameters>
+        <vertex><![CDATA[
+// Revelations Color Correction vertex shader
+// Unpacks complex parameters and passes them to fragment shader
+// 
+// PARAMETER PACKING TECHNIQUE:
+// To reduce attribute count, multiple values are packed into vec4s
+// Example: ContrLightSat_Legacy packs Contrast, Lightness, Saturation, and Legacy flag
+
+// Standard Isaac attributes
+attribute vec3 Position;       // Vertex position
+attribute vec4 Color;          // Vertex color (usually white)
+attribute vec2 TexCoord;       // UV coordinates (0,0 to 1,1)
+attribute vec4 RenderData;     // xy=offset, zw=screen dimensions
+attribute float Scale;         // Room zoom level
+
+// Color correction parameters
+attribute float ActiveIn;      // Master enable (0=off, 1+=on with debug modes)
+attribute vec3 RGB;            // Global RGB multiplier for color tinting
+attribute vec4 ShadRGB_Wgt;    // rgb=shadow tint color, w=shadow weight
+attribute vec4 MidRGB_Wgt;     // rgb=midtone tint color, w=midtone weight
+attribute vec4 HighRGB_Wgt;    // rgb=highlight tint color, w=highlight weight
+attribute vec4 ContrLightSat_Legacy; // x=contrast, y=lightness, z=saturation, w=legacy mode
+attribute vec4 ColBoostSelection; // Hue range selection: x=start, y=end, z=feather, w=min saturation
+attribute vec4 ColBoostRGBSat; // Color boost: rgb=color multipliers, a=saturation boost
+attribute vec3 Levels;         // x=input min, y=input max, z=gamma
+
+// Standard varyings
+varying vec4 Color0;
+varying vec2 TexCoord0;
+varying vec4 RenderDataOut;
+varying float ScaleOut;
+
+// Unpacked parameter varyings
+varying float ActiveOut;
+
+// Shadow/Midtone/Highlight tint colors and weights
+varying vec3 ShadRGBOut;
+varying vec3 MidRGBOut;
+varying vec3 HighRGBOut;
+varying float ShadW;           // Shadow weight (higher = tighter range)
+varying float MidW;            // Midtone weight
+varying float HighW;           // Highlight weight
+varying vec3 RGBOut;           // Global RGB multiplier
+
+// Basic adjustments
+varying float ContrastOut;
+varying float LightnessOut;
+varying float SaturationOut;
+varying float UseLegacyCL;     // Use legacy contrast/lightness formula
+
+// Levels adjustment
+varying float LevelsMin;       // Input black point (0-1)
+varying float LevelsMax;       // Input white point (0-1)
+varying float Gamma;           // Gamma correction
+
+// Selective color boost parameters
+varying float ColBoostSelStart;
+varying float ColBoostSelEndShifted;
+varying float ColBoostSelFeather;
+varying float ColBoostSelSatStart;
+varying vec3 ColBoostRGB;
+varying float ColBoostSat;
+
+uniform mat4 Transform;
+
+void main(void)
+{
+    // Pass through standard attributes
+    RenderDataOut = RenderData;
+    ScaleOut = Scale;
+    Color0 = Color;
+    TexCoord0 = TexCoord;
+    ActiveOut = ActiveIn;
+
+    // Unpack shadow/midtone/highlight parameters
+    // The .rgb component is the tint color
+    // The .w component controls the "tightness" of the range
+    ShadRGBOut = ShadRGB_Wgt.rgb;
+    MidRGBOut = MidRGB_Wgt.rgb;
+    HighRGBOut = HighRGB_Wgt.rgb;
+    ShadW = ShadRGB_Wgt.w;
+    MidW = MidRGB_Wgt.w;
+    HighW = HighRGB_Wgt.w;
+    RGBOut = RGB;
+
+    // Unpack basic adjustments from packed vec4
+    ContrastOut = ContrLightSat_Legacy.x;
+    LightnessOut = ContrLightSat_Legacy.y;
+    SaturationOut = ContrLightSat_Legacy.z;
+    UseLegacyCL = ContrLightSat_Legacy.w;
+
+    // Unpack levels parameters
+    LevelsMin = Levels.x;
+    LevelsMax = Levels.y;
+    Gamma = Levels.z;
+
+    // Unpack color boost selection
+    // Hue range is normalized 0-1 (like HSV hue)
+    ColBoostSelStart = ColBoostSelection.x;
+    ColBoostSelFeather = ColBoostSelection.z;
+    ColBoostSelEndShifted = ColBoostSelection.y;
+    // Shift hue range so start is at 0 (simplifies fragment shader logic)
+    ColBoostSelEndShifted += -ColBoostSelStart + ColBoostSelFeather;
+    if (ColBoostSelEndShifted < 0.) ColBoostSelEndShifted += 1.;
+
+    ColBoostSelSatStart = ColBoostSelection.w;
+
+    // Unpack color boost multipliers
+    ColBoostRGB = ColBoostRGBSat.rgb;
+    ColBoostSat = ColBoostRGBSat.a;
+
+    gl_Position = Transform * vec4(Position.xyz, 1.0);
+}
+]]></vertex>
+        <fragment><![CDATA[
+// Revelations Color Correction fragment shader
+// Professional color grading with multiple adjustment layers
+// 
+// PROCESSING ORDER (important for correct results):
+// 1. Levels adjustment (black/white point, gamma)
+// 2. Color boost calculation (selective color enhancement)
+// 3. Saturation adjustment
+// 4. Lightness and Contrast
+// 5. Shadow tinting (affects dark areas)
+// 6. Highlight tinting (affects bright areas)
+// 7. Midtone tinting (affects medium brightness)
+// 8. Global RGB tint
+// 9. Apply color boost RGB
+
+// Requires OpenGL 2.1 for array support
+// Isaac Rebirth needs 2.0, Repentance likely higher
+#version 120
+
+#define USE_ARRAYS 1
+
+// Debug mode constants - set ActiveIn to these values for debug views
+#define DEBUG_BEFORE_AFTER 2     // Split screen: left=original, right=corrected
+#define DEBUG_GRAYSCALE 3        // Show luminance only
+#define DEBUG_SHADOWS 4          // Visualize shadow mask
+#define DEBUG_MIDTONES 5         // Visualize midtone mask
+#define DEBUG_HIGHLIGHTS 6       // Visualize highlight mask
+#define DEBUG_CHECK_ARRAYS 7     // Test if arrays are supported (green=yes, red=no)
+#define DEBUG_COL_BOOST_CHECK 8  // Visualize color boost mask
+
+varying float Time;
+varying vec4 Color0;
+varying vec2 TexCoord0;
+varying vec4 RenderDataOut;
+varying float ScaleOut;
+
+varying float ActiveOut;
+
+varying float ContrastOut;
+varying float LightnessOut;
+varying float SaturationOut;
+varying float UseLegacyCL;
+
+varying float LevelsMin;
+varying float LevelsMax;
+varying float Gamma;
+
+varying vec3 RGBOut;
+varying vec3 ShadRGBOut;
+varying vec3 MidRGBOut;
+varying vec3 HighRGBOut;
+varying float ShadW;
+varying float MidW;
+varying float HighW;
+
+varying float ColBoostSelStart;
+varying float ColBoostSelEndShifted;
+varying float ColBoostSelFeather;
+varying float ColBoostSelSatStart;
+
+varying vec3 ColBoostRGB;
+varying float ColBoostSat;
+
+uniform sampler2D Texture0;
+
+// ============================================================
+// RGB TO HSV - Convert RGB color to Hue/Saturation/Value
+// ============================================================
+// HSV is useful for selecting colors by hue (color wheel position)
+// H: 0-1 (red->yellow->green->cyan->blue->magenta->red)
+// S: 0-1 (gray to fully saturated)
+// V: 0-1 (black to full brightness)
+vec3 rgb2hsv(vec3 c)
+{
+    vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+    vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+    vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+
+    float d = q.x - min(q.w, q.y);
+    float e = 1.0e-10;  // Small value to prevent division by zero
+    return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+}
+
+#ifdef USE_ARRAYS
+  // ============================================================
+  // GET COLOR BOOST - Calculate selective color enhancement
+  // ============================================================
+  // Returns how much to boost this pixel based on its hue
+  // Uses smoothstep for soft transitions at hue boundaries
+  float getColBoost(vec3 c) {
+    vec3 hsv = rgb2hsv(c);
+    // Shift hue so our target range starts at 0
+    float hues = hsv.x - ColBoostSelStart + ColBoostSelFeather;
+    if (hues < 0.) hues += 1.;  // Wrap around
+
+    // Create soft selection using smoothstep at both ends
+    float colBoost = smoothstep(0., ColBoostSelFeather, hues) *
+                    (1. - smoothstep(ColBoostSelEndShifted, ColBoostSelEndShifted + ColBoostSelFeather, hues));
+
+    // Also consider minimum saturation (don't boost gray pixels)
+    if (ColBoostSelSatStart < 1.)
+    {
+      colBoost *= smoothstep(max(0., ColBoostSelSatStart - ColBoostSelFeather), ColBoostSelSatStart, hsv.y);
+    }
+    return clamp(colBoost, 0.0, 1.0);
+  }
+
+  // ============================================================
+  // BLUR FUNCTIONS - Apply Gaussian blur to color boost mask
+  // ============================================================
+  // Blurring the mask creates smoother color transitions
+  // Uses separable Gaussian blur (horizontal then vertical)
+  
+  // Gaussian kernel weights (optimized for 7-tap blur)
+  const float[] blurMults = float[](0.1964825501511404, 0.2969069646728344, 0.09447039785044732, 0.010381362401148057);
+  const vec2[] blurOffsets = vec2[](vec2(0.0), vec2(1.411764705882353), vec2(2.5941176470588234), vec2(3.876470588235294));
+
+  // Single-axis blur helper
+  float _blurColBoost(vec2 texc, vec2 dir) {
+    float colBoost = 0.0, sgn = -1.;
+    vec2 samplec;
+    int index, i;
+    for (i = 0; i < 8; i++) {
+      index = i / 2;
+      sgn = -sgn;  // Alternate between positive and negative offsets
+      samplec = (texc + blurOffsets[index] / RenderDataOut.zw * dir * sgn);
+      colBoost += getColBoost(texture2D(Texture0, samplec).rgb) * blurMults[index];
+    }
+    return colBoost;
+  }
+
+  // Full 2D Gaussian blur of color boost
+  float blurColBoost(vec3 c, vec2 texc, vec2 dir) {
+    float colBoost = 0.0, sgn = -1.;
+    vec2 samplec;
+    int index, i;
+    for (i = 0; i < 8; i++) {
+      index = i / 2;
+      sgn = -sgn;
+      samplec = (texc + blurOffsets[index] / RenderDataOut.zw * dir * sgn);
+      colBoost += _blurColBoost(samplec, dir.yx);  // Note: perpendicular direction
+    }
+    return colBoost;
+  }
+#else
+  // Fallback for GPUs without array support
+  float getColBoost(vec3 c) {
+    return 0.;
+  }
+  float blurColBoost(vec3 c, vec2 coord, vec2 dir) {
+    return 0.;
+  }
+#endif
+
+// ============================================================
+// GAMMA CORRECTION - Apply gamma curve
+// ============================================================
+// Gamma adjusts the perceived brightness curve
+// gamma < 1: darker midtones, gamma > 1: brighter midtones
+vec3 gammaCorrect(vec3 color, float gamma){
+    return pow(color, vec3(1.0/gamma));
+}
+
+// ============================================================
+// INPUT RANGE - Remap color values to new range
+// ============================================================
+// Maps minInput->0 and maxInput->1
+// Used for levels adjustment (black/white point)
+vec3 inputRange(vec3 color, float minInput, float maxInput){
+    return min(max(color - vec3(minInput), vec3(0.0)) / (vec3(maxInput) - vec3(minInput)), vec3(1.0));
+}
+
+// ============================================================
+// FINAL LEVELS - Combined levels adjustment
+// ============================================================
+// Applies: input range mapping + gamma correction
+vec3 finalLevels(vec3 color, float minInput, float gamma, float maxInput){
+    return gammaCorrect(inputRange(color, minInput, maxInput), gamma);
+}
+
+// Constant vectors for optimization
+const vec3 FullW = vec3(1.);            // White
+const vec3 FullGrey = vec3(.5);         // 50% gray
+const vec3 W = vec3(0.2125, 0.7154, 0.0721); // sRGB luminance weights
+const vec3 Grey = W*0.5;                // Weighted gray
+const vec2 ZeroOne = vec2(0.,1.);       // Optimization helper
+
+void main()
+{
+    // Early exit if shader is disabled
+    if (ActiveOut < 0.0001) {
+        gl_FragColor = texture2D(Texture0, TexCoord0.xy);
+    } else {
+        vec4 FColor = texture2D(Texture0, TexCoord0);
+
+        int iactive = int(floor(ActiveOut));
+        // Check if we should process (not in before/after left side)
+        if (iactive > 0 && !(iactive == DEBUG_BEFORE_AFTER && gl_FragCoord.x < RenderDataOut.x/2.)) {
+            vec3 Color = FColor.rgb;
+
+            // STEP 1: LEVELS ADJUSTMENT
+            // Apply input range mapping and gamma correction
+            Color = finalLevels(Color, LevelsMin, Gamma+1.0, LevelsMax+1.0);
+
+            // STEP 2: COLOR BOOST CALCULATION
+            // Calculate selective color boost (blurred for smooth transitions)
+            float colBoost = 0.;
+            if (ColBoostSelSatStart < 1.)
+            {
+                colBoost = blurColBoost(Color, TexCoord0, vec2(1.,0.));
+            }
+
+            // Calculate luminance for tinting calculations
+            float avgRGB = dot(Color, W);
+
+            // STEP 3: SATURATION ADJUSTMENT
+            // Mix between grayscale and color (OpenGL Chapter 16 technique)
+            Color = mix(vec3(avgRGB), Color, SaturationOut + colBoost * ColBoostSat + 1.0);
+
+            // Choose lightness/contrast formula based on legacy flag
+            vec3 lightnessEnd = (UseLegacyCL > 0.1) ? W : FullW;
+            vec3 contrastEnd = (UseLegacyCL > 0.1) ? Grey : FullGrey;
+
+            // STEP 4: LIGHTNESS - Mix toward white
+            Color = mix(Color, lightnessEnd, LightnessOut);
+            
+            // STEP 5: CONTRAST - Mix toward gray (negative contrast reduces it)
+            Color = mix(Color, contrastEnd, -ContrastOut);
+
+            // STEP 6: SHADOW TINTING
+            // exp() creates bell curve centered at black (avgRGB=0)
+            // ShadW controls the width of the shadow range
+            float shadMult = min(1., 1.6 * exp(-ShadW * avgRGB * avgRGB));
+            Color *= mix(FullW, ShadRGBOut, shadMult);
+
+            // STEP 7: HIGHLIGHT TINTING
+            // exp() creates bell curve centered at white (avgRGB=1)
+            float highMult = min(1., 2.4 * exp(-HighW * (avgRGB - 1.0) * (avgRGB - 1.0)));
+            Color *= mix(FullW, HighRGBOut, highMult);
+
+            // STEP 8: MIDTONE TINTING
+            // exp() creates bell curve centered at gray (avgRGB=0.5)
+            float midMult = min(1., 1.8*exp(-MidW * (avgRGB - 0.5) * (avgRGB - 0.5)));
+            Color *= mix(FullW, MidRGBOut, midMult);
+
+            // STEP 9: GLOBAL RGB TINT
+            Color *= RGBOut;
+
+            // STEP 10: APPLY COLOR BOOST RGB
+            Color = mix(Color, Color * ColBoostRGB, colBoost);
+
+            // OUTPUT based on debug mode
+            if (iactive < 3)
+                // Normal output (optimized swizzle+MAD)
+                gl_FragColor = Color.rgbr * ZeroOne.yyyx + ZeroOne.xxxy;
+            else if (iactive == DEBUG_COL_BOOST_CHECK)
+                // Show color boost mask
+                gl_FragColor = vec4(vec3(colBoost), 1.);
+            else if (iactive == DEBUG_CHECK_ARRAYS)
+                // Array support check (green=supported, red=not)
+                #ifdef USE_ARRAYS
+                    gl_FragColor = Color.rgbr * ZeroOne.xyxx + ZeroOne.xxxy;
+                #else
+                    gl_FragColor = Color.rgbr * ZeroOne.yxxx + ZeroOne.xxxy;
+                #endif
+            else if (iactive == DEBUG_HIGHLIGHTS)
+                // Show highlight mask
+                gl_FragColor = vec4(vec3(highMult), 1.);
+            else if (iactive == DEBUG_MIDTONES)
+                // Show midtone mask
+                gl_FragColor = vec4(vec3(midMult), 1.);
+            else if (iactive == DEBUG_SHADOWS)
+                // Show shadow mask
+                gl_FragColor = vec4(vec3(shadMult), 1.);
+            else if (iactive == DEBUG_GRAYSCALE)
+                // Show grayscale
+                gl_FragColor = vec4(vec3(avgRGB), 1.);
+        }
+        else {
+            // Before/after mode - show original on left side
+            gl_FragColor = FColor;
+        }
+    }
+}
+]]></fragment>
+    </shader>
+
+    <!-- ================================================================
+         REVELATIONS EFFECTS SHADER
+         Applies localized effects like tomb masks
+         ================================================================ -->
+    <shader name="RevEffects" description="Localized effects with tomb mask overlays">
+        <parameters>
+            <param name="ActiveIn" type="float"/>
+            <param name="TypeVariantDebug" type="vec3"/>
+            <param name="RGB" type="vec3"/> 
+            <param name="ContrLightSat" type="vec3"/>
+            <param name="nTlBr" type="vec4"/>
+        </parameters>
+        <vertex><![CDATA[
+// Revelations Effects vertex shader
+// Supports tomb mask effects with customizable tinting
+// 
+// TOMB MASKS:
+// Create atmospheric lighting effects in specific room areas
+// Using geometric shapes (lines, circles) defined by constants
+
+attribute vec3 Position;
+attribute vec4 Color;
+attribute vec2 TexCoord;
+attribute vec4 RenderData;
+attribute float Scale;
+
+// Effect control parameters
+attribute float ActiveIn;          // Master enable
+attribute vec3 TypeVariantDebug;   // x=effect type, y=variant, z=debug mode
+attribute vec3 RGB;                // Color tint for the effect
+attribute vec3 ContrLightSat;      // x=contrast, y=lightness, z=saturation
+attribute vec4 nTlBr;              // Normalized room bounds: xy=top-left, zw=bottom-right
+
+varying vec4 Color0;
+varying vec2 TexCoord0;
+varying vec4 RenderDataOut;
+varying float ScaleOut;
+
+// Unpacked effect parameters
+varying float Active;
+varying float Type;                // Effect type (1=tomb masks)
+varying float Variant;             // Which variant (1-10 for tomb masks)
+varying float Debug;               // Debug mode (shows mask overlay)
+varying float Contrast;
+varying float Lightness;
+varying float Saturation;
+
+varying vec2 nTl;                  // Normalized top-left corner
+varying vec2 nBr;                  // Normalized bottom-right corner
+
+varying vec3 RGBOut;
+
+uniform mat4 Transform;
+
+void main(void)
+{
+    RenderDataOut = RenderData;
+    ScaleOut = Scale;
+    Color0 = Color;
+    TexCoord0 = TexCoord;
+    Active = ActiveIn;
+    
+    // Unpack the packed parameters
+    Type = TypeVariantDebug.x;
+    Variant = TypeVariantDebug.y;
+    Debug = TypeVariantDebug.z;
+    Contrast = ContrLightSat.x;
+    Lightness = ContrLightSat.y;
+    Saturation = ContrLightSat.z;
+
+    RGBOut = RGB;
+
+    // Room bounds in normalized coordinates
+    nTl = nTlBr.xy;
+    nBr = nTlBr.zw;
+
+    gl_Position = Transform * vec4(Position.xyz, 1.0);
+}
+]]></vertex>
+        <fragment><![CDATA[
+// Revelations Effects fragment shader
+// Creates localized lighting effects using geometric masks
+// 
+// TECHNIQUE:
+// Uses signed distance fields (SDF) for lines and circles
+// smoothstep creates soft, anti-aliased edges
+// Masks are scaled to match current room bounds
+
+// Debug mode constants
+#define DEBUG_BEFORE_AFTER 2
+#define DEBUG_GRAYSCALE 3
+#define DEBUG_SHADOWS 4
+#define DEBUG_MIDTONES 5
+#define DEBUG_HIGHLIGHTS 6
+#define DEBUG_CHECK_ARRAYS 7
+#define DEBUG_COL_BOOST_CHECK 8
+
+// Effect type constants
+#define TYPE_TOMB_MASK 1
+#define TYPE_TOMB_MASK_DEBUG 2  // Shows the mask as white overlay
+
+varying float Time;
+varying vec4 Color0;
+varying vec2 TexCoord0;
+varying vec4 RenderDataOut;
+varying float ScaleOut;
+
+varying float Active;
+varying float Type;
+varying float Variant;
+varying float Debug;
+varying float Contrast;
+varying float Lightness;
+varying float Saturation;
+
+varying vec3 RGBOut;
+
+varying vec2 nBr;  // Normalized bottom-right
+varying vec2 nTl;  // Normalized top-left
+
+uniform sampler2D Texture0;
+
+// ============================================================
+// DISTANCE TO LINE - SDF for line segment
+// ============================================================
+// Returns perpendicular distance from point p to line defined by p1-p2
+float distToLine(vec2 p1, vec2 p2, vec2 p)
+{
+    vec2 lineDir = p2 - p1;                     // Line direction vector
+    vec2 perpDir = vec2(lineDir.y, -lineDir.x); // Perpendicular direction
+    vec2 dirToPt1 = p1 - p;                     // Vector to line start
+    return abs(dot(normalize(perpDir), dirToPt1)); // Perpendicular distance
+}
+
+// ============================================================
+// PLOT LINE - Create soft line mask with scaling
+// ============================================================
+// st: current screen position
+// p1, p2: line endpoints
+// e: expansion (width)
+// f: feather (softness)
+// orBr, orTl: original room bounds for scaling
+float plotLine(vec2 st, vec2 p1, vec2 p2, float e, float f, vec2 orBr, vec2 orTl)
+{
+    vec2 c = (nBr+nTl)/2.;        // Current room center
+    vec2 orc = (orBr+orTl)/2.;    // Original room center
+    float scale = (nBr.x - c.x)/(orBr.x - orc.x);  // Scale factor
+    vec2 translate = c - orc;     // Translation offset
+
+    // Transform line endpoints to current room bounds
+    vec2 transP1 = c + (p1 - c + translate) * scale;
+    vec2 transP2 = c + (p2 - c + translate) * scale;
+    
+    // Create soft mask using smoothstep
+    return pow(smoothstep((e + f) * scale, e * scale, distToLine(transP1, transP2, st)), 1.5);
+}
+
+// ============================================================
+// EQUALIZE NORMALIZED VECTOR - Aspect ratio correction
+// ============================================================
+// Makes Y axis proportional to X axis (as if screen was square)
+// Needed for circular masks to appear round
+vec2 equalizeNormVec(vec2 v)
+{
+    return vec2(v.x, v.y / RenderDataOut.x * RenderDataOut.y);
+}
+
+// ============================================================
+// PLOT CIRCLE - Create soft circular mask with scaling
+// ============================================================
+// st: current screen position
+// cnt: circle center (pre-equalized)
+// r: radius
+// f: feather (softness)
+float plotCircle(vec2 st, vec2 cnt, float r, float f, vec2 orBr, vec2 orTl)
+{
+    vec2 stx = equalizeNormVec(st);  // Aspect-correct the position
+
+    vec2 c = (nBr+nTl)/2.;           // Current room center
+    vec2 orc = (orBr+orTl)/2.;       // Original room center (not Shrek's species!)
+    float scale = (nBr.x - c.x)/(orBr.x - orc.x);
+    vec2 translate = equalizeNormVec(c - orc);
+    vec2 eqc = equalizeNormVec(c);
+
+    // Transform circle center to current room bounds
+    vec2 transCnt = eqc + (cnt - eqc + translate) * scale;
+    
+    // Create soft circular mask
+    return pow(smoothstep((r + f) * scale, r * scale, distance(transCnt, stx)), 1.5);
+}
+
+// Forward declaration of tomb mask function
+float getTombMask(vec2 st, int IVariant, vec2 Br, vec2 Tl);
+
+// ============================================================
+// TOMB MASK CONSTANTS
+// ============================================================
+// Original room boundaries (used for scaling masks to any room size)
+const vec2 Tl = vec2(0.14791665971279, 0.16296295821667);
+const vec2 Br = vec2(0.85208332538605, 0.83703702688217);
+const vec2 EdgeOffset = vec2(0.04);   // Distance from edge where fade starts
+const vec2 EdgeFeather = vec2(0.02);  // Width of edge fade
+
+// Color constants for optimization
+const vec3 FullW = vec3(1.0);         // White
+const vec3 Grey = FullW * 0.5;        // 50% gray
+const vec3 W = vec3(0.2125, 0.7154, 0.0721); // sRGB luminance weights
+const vec2 ZeroOne = vec2(0.,1.);     // Optimization helper
+
+void main()
+{
+    // Early exit if disabled
+    if (Active < 0.0001) {
+        gl_FragColor = texture2D(Texture0, TexCoord0.xy);
+    } else {
+        int IType = int(Type);
+        int IVariant = int(Variant);
+        int IDebug = int(Debug);
+
+        // Convert to screen-normalized coordinates
+        vec2 st = gl_FragCoord.xy/RenderDataOut.xy;
+        
+        // Check if we should apply the effect
+        if (Active > 0.0 && IType != 0 && IVariant != 0 
+        && (IDebug == TYPE_TOMB_MASK || (IDebug == DEBUG_BEFORE_AFTER && st.x > 0.5) || IDebug == DEBUG_GRAYSCALE)) {
+            vec3 Color = texture2D(Texture0, TexCoord0.xy).rgb;
+
+            // Calculate luminance for later use
+            float avgRGB = dot(Color, W);
+
+            if (IType == TYPE_TOMB_MASK || IType == TYPE_TOMB_MASK_DEBUG) {
+                // Get the tomb mask value for this pixel
+                float mask = getTombMask(st, IVariant, Br, Tl);
+
+                // Apply edge fade at room boundaries
+                vec2 eo = EdgeOffset * ScaleOut;
+                vec2 ef = EdgeFeather * ScaleOut;
+                vec2 edge1 = smoothstep(nTl - eo - ef, nTl - eo, st);
+                vec2 edge2 = vec2(1.) - smoothstep(nBr + eo, nBr + eo + ef, st);
+
+                // Combine edge fades with mask
+                mask *= edge1.x * edge1.y * edge2.x * edge2.y;
+                mask *= Active;  // Apply overall intensity
+
+                // Apply color tint based on mask
+                Color = mix(Color, Color * RGBOut, mask);
+
+                // Apply saturation adjustment (masked)
+                vec3 intensity = vec3(avgRGB);
+                Color = mix(intensity, Color, Saturation*mask+1.0);
+
+                // Apply lightness (mix toward white)
+                Color = mix(Color, FullW, Lightness*mask);
+
+                // Apply contrast (mix toward gray)
+                Color = mix(Color, Grey, -Contrast*mask);
+
+                // Debug mode: show mask as white overlay
+                if (IType == TYPE_TOMB_MASK_DEBUG) {
+                    Color = mix(Color, FullW, mask);
+                }
+            }
+
+            // Output based on debug mode
+            if (IDebug != DEBUG_GRAYSCALE)
+                gl_FragColor = Color.rgbr*ZeroOne.yyyx+ZeroOne.xxxy;
+            else
+                gl_FragColor = vec4(vec3(dot(Color, W)), 1.0);
+        } else {
+            // No effect or wrong side of before/after
+            gl_FragColor = texture2D(Texture0, TexCoord0.xy);
+        }
+    }
+}
+
+// ============================================================
+// TOMB MASK CONSTANTS - Auto-generated geometric definitions
+// ============================================================
+// These define the shapes for each tomb mask variant
+// Line masks use two points + expansion + feather
+// Circle masks use center + radius + feather
+
+// Line mask constants for variant 1
+const vec2 P1_1_L1 = vec2(0.16041666269302, 0.42037037014961);
+const vec2 P1_1_L2 = vec2(0.86770832538605, 0.62407410144806);
+const float Expansion1_1_L = 0.051894295960665;
+const float Feather1_1_L = 0.13870289549232;
+
+// Line mask constants for variant 3
+const vec2 P3_1_L1 = vec2(0.27187499403954, 0.1740740686655);
+const vec2 P3_1_L2 = vec2(0.32499998807907, 0.77777779102325);
+const float Expansion3_1_L = 0.040793284773827;
+const float Feather3_1_L = 0.11709925532341;
+
+const vec2 P3_2_L1 = vec2(0.63749998807907, 0.14444445073605);
+const vec2 P3_2_L2 = vec2(0.69062501192093, 0.84074074029922);
+const float Expansion3_2_L = 0.0051932209171355;
+const float Feather3_2_L = 0.10856634145603;
+
+// Line mask constants for variant 8
+const vec2 P8_1_L1 = vec2(0.62604165077209, 0.14444445073605);
+const vec2 P8_1_L2 = vec2(0.33958333730698, 0.9037036895752);
+const float Expansion8_1_L = 0.12051863223314;
+const float Feather8_1_L = 0.19252078980207;
+
+// Line mask constants for variant 9
+const vec2 P9_1_L1 = vec2(0.15000000596046, 0.4277777671814);
+const vec2 P9_1_L2 = vec2(0.87708336114883, 0.5407407283783);
+const float Expansion9_1_L = 0.067155696451664;
+const float Feather9_1_L = 0.14003180712461;
+
+const vec2 P9_2_L1 = vec2(0.45208331942558, 0.86851853132248);
+const vec2 P9_2_L2 = vec2(0.60520833730698, 0.12222222238779);
+const float Expansion9_2_L = 0.024725275114179;
+const float Feather9_2_L = 0.10505658201873;
+
+// Circle mask constants for variants 2, 4, 5, 6, 7, 10
+const vec2 Cnt2_1_C = vec2(0.92083334922791, 0.053125001490116);
+const float Radius2_1_C = 0.13944724202156;
+const float Feather2_1_C = 0.43014255166054;
+
+const vec2 Cnt4_1_C = vec2(0.32291665673256, 0.35208332538605);
+const float Radius4_1_C = 0.032609317451715;
+const float Feather4_1_C = 0.14046102389693;
+
+const vec2 Cnt4_2_C = vec2(0.38229167461395, 0.32916668057442);
+const float Radius4_2_C = 0.019150810316205;
+const float Feather4_2_C = 0.13718597404659;
+
+const vec2 Cnt5_1_C = vec2(0.49583333730698, 0.27604165673256);
+const float Radius5_1_C = 0.098364435136318;
+const float Feather5_1_C = 0.18393490463495;
+
+const vec2 Cnt6_1_C = vec2(0.33541667461395, 0.34999999403954);
+const float Radius6_1_C = 0.065260216593742;
+const float Feather6_1_C = 0.16993507742882;
+
+const vec2 Cnt7_1_C = vec2(0.703125, 0.18541666865349);
+const float Radius7_1_C = 0.046689432114363;
+const float Feather7_1_C = 0.14398107305169;
+
+const vec2 Cnt10_1_C = vec2(0.38645833730698, 0.22708334028721);
+const float Radius10_1_C = 0.03294038772583;
+const float Feather10_1_C = 0.17021401226521;
+
+// ============================================================
+// GET TOMB MASK - Returns mask value for the selected variant
+// ============================================================
+float getTombMask(vec2 st, int IVariant, vec2 Br, vec2 Tl)
+{
+    float mask = 0.0;
+
+    // Each variant uses different geometric shapes
+    if (IVariant == 1) {
+        // Single diagonal line
+        mask += plotLine(st, P1_1_L1, P1_1_L2, Expansion1_1_L, Feather1_1_L, Br, Tl);
+    } else
+    if (IVariant == 2) {
+        // Single circle in corner
+        mask += plotCircle(st, Cnt2_1_C, Radius2_1_C, Feather2_1_C, Br, Tl);
+    } else
+    if (IVariant == 3) {
+        // Two vertical lines
+        mask += plotLine(st, P3_1_L1, P3_1_L2, Expansion3_1_L, Feather3_1_L, Br, Tl);
+        mask += plotLine(st, P3_2_L1, P3_2_L2, Expansion3_2_L, Feather3_2_L, Br, Tl);
+    } else
+    if (IVariant == 4) {
+        // Two overlapping circles
+        mask += plotCircle(st, Cnt4_1_C, Radius4_1_C, Feather4_1_C, Br, Tl);
+        mask += plotCircle(st, Cnt4_2_C, Radius4_2_C, Feather4_2_C, Br, Tl);
+    } else
+    if (IVariant == 5) {
+        // Single larger circle
+        mask += plotCircle(st, Cnt5_1_C, Radius5_1_C, Feather5_1_C, Br, Tl);
+    } else
+    if (IVariant == 6) {
+        // Single medium circle
+        mask += plotCircle(st, Cnt6_1_C, Radius6_1_C, Feather6_1_C, Br, Tl);
+    } else
+    if (IVariant == 7) {
+        // Single small circle
+        mask += plotCircle(st, Cnt7_1_C, Radius7_1_C, Feather7_1_C, Br, Tl);
+    } else
+    if (IVariant == 8) {
+        // Single diagonal line (different angle)
+        mask += plotLine(st, P8_1_L1, P8_1_L2, Expansion8_1_L, Feather8_1_L, Br, Tl);
+    } else
+    if (IVariant == 9) {
+        // Two crossing lines
+        mask += plotLine(st, P9_1_L1, P9_1_L2, Expansion9_1_L, Feather9_1_L, Br, Tl);
+        mask += plotLine(st, P9_2_L1, P9_2_L2, Expansion9_2_L, Feather9_2_L, Br, Tl);
+    } else
+    if (IVariant == 10) {
+        // Single small circle
+        mask += plotCircle(st, Cnt10_1_C, Radius10_1_C, Feather10_1_C, Br, Tl);
+    }
+
+    return min(1.0, mask);  // Clamp to prevent over-brightening
+}
+]]></fragment>
+    </shader>
+    
+    <!-- ================================================================
+         SNOWFLAKES SHADER
+         Creates animated snowfall overlay effect
+         ================================================================ -->
+    <shader name="Snowflakes" description="Animated snowfall overlay using simplex noise">
+      <parameters>
+          <param name="ActiveIn" type="float"/>
+          <param name="DirectionNoiseThresholdIn" type="vec4"/>
+          <param name="AltDirectionsIn" type="vec4"/>
+      </parameters>
+      <vertex><![CDATA[
+// Snowflakes vertex shader
+// Passes snow direction and noise parameters to fragment shader
+
+attribute vec3 Position;
+attribute vec4 Color;
+attribute vec2 TexCoord;
+attribute vec4 RenderData;
+attribute float Scale;
+
+varying vec4 Color0;
+varying vec2 TexCoord0;
+varying vec4 RenderDataOut;
+varying float ScaleOut;
+
+// Snow parameters
+attribute float ActiveIn;          // Effect intensity (0=off, 1=full snow)
+varying float Active;
+
+// DirectionNoiseThreshold packs: xy=direction, z=noise scale, w=threshold
+attribute vec4 DirectionNoiseThresholdIn;
+varying vec4 DirectionNoiseThreshold;
+
+// Alternative snow directions for layered effect
+attribute vec4 AltDirectionsIn;    // xy=alt direction 1, zw=alt direction 2
+varying vec4 AltDirections;
+
+uniform mat4 Transform;
+
+void main(void) {
+    RenderDataOut = RenderData;
+    Color0 = Color;
+    TexCoord0 = TexCoord;
+
+    gl_Position = Transform * vec4(Position.xyz, 1.0);
+
+    Active = ActiveIn;
+    DirectionNoiseThreshold = DirectionNoiseThresholdIn;
+    AltDirections = AltDirectionsIn;
+}]]></vertex>
+      <fragment><![CDATA[
+// Snowflakes fragment shader
+// Uses simplex noise to generate procedural snow pattern
+// Multiple directions create layered depth effect
+//
+// TECHNIQUE:
+// 1. Offset UV coordinates by direction vectors (simulates falling)
+// 2. Sample 2D simplex noise at offset position
+// 3. If noise > threshold, pixel becomes white (snowflake)
+// 4. Repeat for each direction layer for depth
+
+varying vec4 Color0;
+varying vec2 TexCoord0;
+varying vec4 RenderDataOut;
+varying float ScaleOut;
+uniform sampler2D Texture0;
+
+varying float Active;
+varying vec4 DirectionNoiseThreshold;
+varying vec4 AltDirections;
+
+// ============================================================
+// SIMPLEX NOISE IMPLEMENTATION
+// ============================================================
+// 2D Simplex noise - fast, smooth pseudo-random noise
+// Credit: Ian McEwan, Ashima Arts (MIT License)
+// https://github.com/ashima/webgl-noise
+
+vec3 mod289(vec3 x) {
+    return x - floor(x * (1.0 / 289.0)) * 289.0;
+}
+
+vec2 mod289(vec2 x) {
+    return x - floor(x * (1.0 / 289.0)) * 289.0;
+}
+
+vec3 permute(vec3 x) {
+    return mod289(((x*34.0)+1.0)*x);
+}
+
+// Main simplex noise function
+// Returns smooth noise value in range [-1, 1]
+float snoise(vec2 v)
+    {
+    // Simplex geometry constants
+    const vec4 C = vec4(0.211324865405187,  // (3.0-sqrt(3.0))/6.0
+                        0.366025403784439,  // 0.5*(sqrt(3.0)-1.0)
+                        -0.577350269189626, // -1.0 + 2.0 * C.x
+                        0.024390243902439); // 1.0 / 41.0
+    
+    // First corner (simplex cell origin)
+    vec2 i  = floor(v + dot(v, C.yy));
+    vec2 x0 = v -   i + dot(i, C.xx);
+
+    // Other corners
+    vec2 i1;
+    i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+    vec4 x12 = x0.xyxy + C.xxzz;
+    x12.xy -= i1;
+
+    // Permutations (creates randomization)
+    i = mod289(i);
+    vec3 p = permute(permute(i.y + vec3(0.0, i1.y, 1.0))
+        + i.x + vec3(0.0, i1.x, 1.0));
+
+    // Calculate contribution from each corner
+    vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+    m = m*m;
+    m = m*m;
+
+    // Gradients (41-point approximation)
+    vec3 x = 2.0 * fract(p * C.www) - 1.0;
+    vec3 h = abs(x) - 0.5;
+    vec3 ox = floor(x + 0.5);
+    vec3 a0 = x - ox;
+
+    // Normalize gradients
+    m *= 1.79284291400159 - 0.85373472095314 * (a0*a0 + h*h);
+
+    // Compute final noise value
+    vec3 g;
+    g.x  = a0.x  * x0.x  + h.x  * x0.y;
+    g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+    return 130.0 * dot(m, g);
+}
+
+void main(void) {
+    // Get original game color
+    vec4 Color = Color0 * texture2D(Texture0, TexCoord0);
+    
+    // Early exit if effect is disabled
+    if (Active < 0.0001) {
+        gl_FragColor = Color;
+    } else {
+        float isSnow = 0.;
+        
+        // Check 3 snow layers (main + 2 alternates for depth)
+        for (int i = 0; i < 3; i++) {
+            vec2 checkPos = TexCoord0;
+            
+            // Apply direction offset based on layer
+            if (i == 0) {
+                // Primary snow direction
+                checkPos = checkPos + DirectionNoiseThreshold.xy;
+            } else if (i == 1 && !(AltDirections.x == 0.0 && AltDirections.y == 0.0)) {
+                // Alternative direction 1 (skip if not set)
+                checkPos = checkPos + AltDirections.xy;
+            } else if (i == 2 && !(AltDirections.z == 0.0 && AltDirections.y == 0.0)) {
+                // Alternative direction 2 (skip if not set)
+                checkPos = checkPos + AltDirections.zw;
+            }
+
+            // Sample noise at offset position
+            // DirectionNoiseThreshold.z controls noise scale (zoom)
+            float posNoise = snoise(checkPos * DirectionNoiseThreshold.z);
+            
+            // If noise exceeds threshold, this pixel is a snowflake
+            // DirectionNoiseThreshold.w is the threshold (higher = less snow)
+            if (posNoise > DirectionNoiseThreshold.w) {
+                isSnow = 1.;
+            }
+        }
+
+        // Blend between original color and white based on snow
+        // Active controls the overall snow intensity
+        gl_FragColor = mix(Color, vec4(1.0, 1.0, 1.0, 1.0), Active * isSnow);
+    };
+}]]></fragment>
+    </shader>
+</shaders>

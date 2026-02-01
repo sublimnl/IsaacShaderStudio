@@ -1,0 +1,49 @@
+{
+  "shaders": [
+    {
+      "id": "simple",
+      "label": "Simple Passthrough",
+      "file": "simple.xml"
+    },
+    {
+      "id": "spotlight",
+      "label": "Player Spotlight",
+      "file": "spotlight.xml"
+    },
+    {
+      "id": "multispotlight",
+      "label": "Multi Spotlight (Player + 5 Tears)",
+      "file": "multispotlight.xml"
+    },
+    {
+      "id": "tint",
+      "label": "Color Tint",
+      "file": "tint.xml"
+    },
+    {
+      "id": "wave",
+      "label": "Wave Distortion",
+      "file": "wave.xml"
+    },
+    {
+      "id": "water",
+      "label": "Water",
+      "file": "water.xml"
+    },
+    {
+      "id": "randomcolors",
+      "label": "Random Colors",
+      "file": "randomcolors.xml"
+    },
+    {
+      "id": "censored",
+      "label": "Censored",
+      "file": "censored.xml"
+    },
+    {
+      "id": "nightvision",
+      "label": "Night Vision",
+      "file": "nightvision.xml"
+    }
+  ]
+}

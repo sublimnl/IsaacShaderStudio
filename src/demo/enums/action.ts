@@ -1,0 +1,17 @@
+export const enum Action {
+    WALK_UP = 1,
+    WALK_DOWN,
+    WALK_LEFT,
+    WALK_RIGHT,
+    SHOOT_UP,
+    SHOOT_DOWN,
+    SHOOT_LEFT,
+    SHOOT_RIGHT,
+    BOMB,
+    ITEM,
+    POCKET_ITEM,
+    DROP,
+    FULLSCREEN,
+    RESTART,
+    MUTE,
+}

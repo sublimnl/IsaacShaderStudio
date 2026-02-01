@@ -1,0 +1,192 @@
+<shaders>
+  <!-- Creates spotlights on the player and their active tears (up to 5) -->
+  <shader name="MultiSpotlight" description="Creates spotlights on the player and their active tears (up to 5)">
+    <parameters>
+      <param name="PlayerPos" type="vec2" studioType="playerpos"/>
+      <param name="Radius" type="float" default="0.05" min="0.01" max="0.5" step="0.01"/>
+      <param name="Softness" type="float" default="0.16" min="0.0" max="0.5" step="0.02"/>
+      <param name="Ambient" type="float" default="0.15" min="0.0" max="1.0" step="0.05"/>
+      <param name="TearRadius" type="float" default="0.03" min="0.01" max="0.3" step="0.01"/>
+      <param name="TearPos1" type="vec2" studioType="tearpos" index="1"/>
+      <param name="TearPos2" type="vec2" studioType="tearpos" index="2"/>
+      <param name="TearPos3" type="vec2" studioType="tearpos" index="3"/>
+      <param name="TearPos4" type="vec2" studioType="tearpos" index="4"/>
+      <param name="TearPos5" type="vec2" studioType="tearpos" index="5"/>
+    </parameters>
+    <vertex><![CDATA[
+attribute vec3 Position;
+attribute vec4 Color;
+attribute vec2 TexCoord;
+attribute vec4 RenderData;
+attribute float Scale;
+
+attribute vec2 PlayerPos;
+attribute float Radius;
+attribute float Softness;
+attribute float Ambient;
+attribute float TearRadius;
+attribute vec2 TearPos1;
+attribute vec2 TearPos2;
+attribute vec2 TearPos3;
+attribute vec2 TearPos4;
+attribute vec2 TearPos5;
+
+uniform mat4 Transform;
+
+varying vec4 Color0;
+varying vec2 TexCoord0;
+varying vec4 RenderDataOut;
+varying float ScaleOut;
+
+varying vec2 PlayerPosOut;
+varying float RadiusOut;
+varying float SoftnessOut;
+varying float AmbientOut;
+varying float TearRadiusOut;
+// Pack tear positions into vec4s (xy = pos1, zw = pos2, etc.)
+varying vec4 TearPack1;  // TearPos1.xy, TearPos2.xy
+varying vec4 TearPack2;  // TearPos3.xy, TearPos4.xy
+varying vec2 TearPos5Out;
+
+void main(void) {
+    Color0 = Color;
+    TexCoord0 = TexCoord;
+    RenderDataOut = RenderData;
+    ScaleOut = Scale;
+    PlayerPosOut = PlayerPos;
+    RadiusOut = Radius;
+    SoftnessOut = Softness;
+    AmbientOut = Ambient;
+    TearRadiusOut = TearRadius;
+    TearPack1 = vec4(TearPos1, TearPos2);
+    TearPack2 = vec4(TearPos3, TearPos4);
+    TearPos5Out = TearPos5;
+    gl_Position = Transform * vec4(Position.xyz, 1.0);
+}
+    ]]></vertex>
+    <fragment><![CDATA[
+varying lowp vec4 Color0;
+varying mediump vec2 TexCoord0;
+varying lowp vec4 RenderDataOut;
+varying lowp float ScaleOut;
+
+varying mediump vec2 PlayerPosOut;
+varying lowp float RadiusOut;
+varying lowp float SoftnessOut;
+varying lowp float AmbientOut;
+varying lowp float TearRadiusOut;
+varying mediump vec4 TearPack1;
+varying mediump vec4 TearPack2;
+varying mediump vec2 TearPos5Out;
+
+uniform sampler2D Texture0;
+
+// Calculate spotlight contribution for a single position
+// Returns 0.0 if position is (0,0) which indicates inactive/unused
+float calcSpotlight(vec2 lightPos, float radius, float softness, float aspectRatio) {
+    // Skip if position is (0,0) - indicates no tear at this slot
+    if (lightPos.x == 0.0 && lightPos.y == 0.0) {
+        return 0.0;
+    }
+
+    // Convert to normalized space
+    vec2 center = (lightPos / RenderDataOut.zw) * ScaleOut;
+
+    // Apply aspect ratio correction
+    vec2 diff = TexCoord0 - center;
+    diff.x *= aspectRatio;
+    float dist = length(diff);
+
+    // Adjust radius and softness by aspect ratio
+    float adjustedRadius = radius * aspectRatio;
+    float adjustedSoftness = softness * aspectRatio;
+
+    return smoothstep(adjustedRadius + adjustedSoftness, adjustedRadius, dist);
+}
+
+void main(void) {
+    vec4 tex = texture2D(Texture0, TexCoord0);
+
+    // Compute aspect ratio
+    float aspectRatio = RenderDataOut.z / RenderDataOut.w;
+
+    // Player spotlight (always active)
+    vec2 playerCenter = (PlayerPosOut / RenderDataOut.zw) * ScaleOut;
+    vec2 diff = TexCoord0 - playerCenter;
+    diff.x *= aspectRatio;
+    float dist = length(diff);
+    float adjustedRadius = RadiusOut * aspectRatio;
+    float adjustedSoftness = SoftnessOut * aspectRatio;
+    float spotlight = smoothstep(adjustedRadius + adjustedSoftness, adjustedRadius, dist);
+
+    // Add tear spotlights (smaller radius, proportional softness)
+    float tearSoftness = SoftnessOut * (TearRadiusOut / RadiusOut);
+
+    // Calculate tear spotlights using helper function
+    spotlight = max(spotlight, calcSpotlight(TearPack1.xy, TearRadiusOut, tearSoftness, aspectRatio));
+    spotlight = max(spotlight, calcSpotlight(TearPack1.zw, TearRadiusOut, tearSoftness, aspectRatio));
+    spotlight = max(spotlight, calcSpotlight(TearPack2.xy, TearRadiusOut, tearSoftness, aspectRatio));
+    spotlight = max(spotlight, calcSpotlight(TearPack2.zw, TearRadiusOut, tearSoftness, aspectRatio));
+    spotlight = max(spotlight, calcSpotlight(TearPos5Out, TearRadiusOut, tearSoftness, aspectRatio));
+
+    // Apply ambient + spotlight
+    gl_FragColor = Color0 * tex * (AmbientOut + (1.0 - AmbientOut) * spotlight);
+}
+    ]]></fragment>
+    <lua><![CDATA[
+-- Shader: MultiSpotlight
+-- Creates spotlights on the player and their active tears (up to 5)
+-- Generated by Isaac Shader Studio
+
+local MultiSpotlightMod = RegisterMod("MultiSpotlightMod", 1)
+
+function MultiSpotlightMod:GetShaderParams(shaderName)
+    if shaderName == 'MultiSpotlight' then
+        local player = Isaac.GetPlayer()
+        if not player then return end
+
+        -- Get player screen position
+        local screenPos = Isaac.WorldToScreen(player.Position)
+
+        -- Collect tear positions (player tears only, up to 5)
+        local tearPositions = {}
+        local tears = Isaac.FindByType(EntityType.ENTITY_TEAR, -1, -1, false, false)
+
+        for _, entity in ipairs(tears) do
+            if #tearPositions >= 5 then break end
+
+            local tear = entity:ToTear()
+            if tear and tear.SpawnerEntity then
+                local spawner = tear.SpawnerEntity
+                -- Check if spawner is a player (not an enemy)
+                if spawner.Type == EntityType.ENTITY_PLAYER then
+                    local tearScreenPos = Isaac.WorldToScreen(tear.Position)
+                    table.insert(tearPositions, { tearScreenPos.X, tearScreenPos.Y  + tear.Height })
+                end
+            end
+        end
+
+        -- Pad with zeros for unused slots
+        while #tearPositions < 5 do
+            table.insert(tearPositions, { 0, 0 })
+        end
+
+        return {
+            PlayerPos = { screenPos.X, screenPos.Y },
+            Radius = 0.05,
+            Softness = 0.16,
+            Ambient = 0.15,
+            TearRadius = 0.03,
+            TearPos1 = tearPositions[1],
+            TearPos2 = tearPositions[2],
+            TearPos3 = tearPositions[3],
+            TearPos4 = tearPositions[4],
+            TearPos5 = tearPositions[5]
+        }
+    end
+end
+
+MultiSpotlightMod:AddCallback(ModCallbacks.MC_GET_SHADER_PARAMS, MultiSpotlightMod.GetShaderParams)
+    ]]></lua>
+  </shader>
+</shaders>

@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<shaders>
+  <!-- Wave Distortion shader - Animated sine wave effect for psychedelic or underwater looks -->
+  <shader name="WaveDistortion" description="Animated sine wave distortion effect with adjustable amplitude, frequency, and speed">
+    <parameters>
+      <param name="Time" type="float" studioType="time"/>
+      <param name="Amplitude" type="float" default="0.02" min="0.0" max="0.1" step="0.005"/>
+      <param name="Frequency" type="float" default="10.0" min="1.0" max="50.0" step="1.0"/>
+      <param name="Speed" type="float" default="0.1" min="0.0" max="2.0" step="0.05"/>
+    </parameters>
+    <vertex><![CDATA[
+      // Wave Distortion vertex shader for The Binding of Isaac
+      // Passes wave parameters to the fragment shader for animation
+      
+      // Standard Isaac vertex attributes
+      attribute vec3 Position;     // Vertex position in 3D space
+      attribute vec4 Color;        // Vertex color from the game
+      attribute vec2 TexCoord;     // UV texture coordinates (0,0 to 1,1)
+      attribute vec4 RenderData;   // xy=offset, zw=screen dimensions in pixels
+      attribute float Scale;       // Room zoom level
+      
+      // Custom wave parameters
+      attribute float Time;        // Auto-incrementing animation timer
+      attribute float Amplitude;   // How far pixels move (0.02 = subtle, 0.1 = extreme)
+      attribute float Frequency;   // How many waves across the screen (higher = more waves)
+      attribute float Speed;       // How fast the waves animate (higher = faster)
+      
+      // Transformation matrix
+      uniform mat4 Transform;      // Model-view-projection matrix
+      
+      // Varyings to pass data to fragment shader
+      varying vec4 Color0;         // Pass through vertex color
+      varying vec2 TexCoord0;      // Pass through texture coordinates
+      varying vec4 RenderDataOut;  // Pass through screen dimensions
+      varying float ScaleOut;      // Pass through zoom scale
+      
+      // Custom parameter varyings
+      varying float TimeOut;       // Pass animation time to fragment
+      varying float AmplitudeOut;  // Pass wave amplitude to fragment
+      varying float FrequencyOut;  // Pass wave frequency to fragment
+      varying float SpeedOut;      // Pass animation speed to fragment
+      
+      void main(void) {
+          // Pass all data through to fragment shader
+          Color0 = Color;
+          TexCoord0 = TexCoord;
+          RenderDataOut = RenderData;
+          ScaleOut = Scale;
+          TimeOut = Time;
+          AmplitudeOut = Amplitude;
+          FrequencyOut = Frequency;
+          SpeedOut = Speed;
+          
+          // Transform vertex position to clip space
+          gl_Position = Transform * vec4(Position.xyz, 1.0);
+      }
+    ]]></vertex>
+    <fragment><![CDATA[
+      // Wave Distortion fragment shader for The Binding of Isaac
+      // Creates animated sine/cosine wave distortion effect
+      // Great for underwater, psychedelic, or dream sequence effects
+      
+      // Input varyings from vertex shader
+      varying lowp vec4 Color0;         // Game's vertex color
+      varying mediump vec2 TexCoord0;   // UV coordinates (0,0 to 1,1)
+      varying lowp vec4 RenderDataOut;  // Screen dimensions
+      varying lowp float ScaleOut;      // Zoom scale
+      
+      // Wave parameter varyings
+      varying lowp float TimeOut;       // Animation time
+      varying lowp float AmplitudeOut;  // Wave displacement amount
+      varying lowp float FrequencyOut;  // Number of wave cycles
+      varying lowp float SpeedOut;      // Animation speed multiplier
+      
+      // The game's rendered frame texture
+      uniform sampler2D Texture0;
+      
+      void main(void) {
+          // Start with the original UV coordinates
+          vec2 uv = TexCoord0;
+          
+          // ANIMATION TIME CALCULATION
+          // Multiply Time by Speed to control animation rate
+          // Higher speed = faster wave movement
+          float animTime = TimeOut * SpeedOut;
+          
+          // HORIZONTAL WAVE DISTORTION
+          // sin() creates smooth oscillation between -1 and 1
+          // uv.y * Frequency: more waves when frequency is higher
+          // Adding animTime makes the wave move over time
+          // Multiplying by Amplitude controls how far pixels shift
+          uv.x += sin(uv.y * FrequencyOut + animTime) * AmplitudeOut;
+          
+          // VERTICAL WAVE DISTORTION
+          // cos() is 90 degrees out of phase with sin()
+          // This creates a swirling effect when combined with horizontal
+          // Uses uv.x to make vertical waves vary across the screen
+          uv.y += cos(uv.x * FrequencyOut + animTime) * AmplitudeOut;
+          
+          // Sample the texture at the distorted coordinates
+          // This creates the wavy displacement effect
+          gl_FragColor = Color0 * texture2D(Texture0, uv);
+      }
+    ]]></fragment>
+  </shader>
+</shaders>

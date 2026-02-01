@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<shaders>
+  <!-- Simple Passthrough - The minimal shader template for Isaac modding -->
+  <shader name="SimplePassthrough" description="Basic passthrough shader that renders the game without modifications">
+    <vertex><![CDATA[
+      // Simple Passthrough vertex shader for The Binding of Isaac
+      // This is the minimal vertex shader - a great starting template!
+      // It just passes data through to the fragment shader unchanged
+      
+      // STANDARD ISAAC ATTRIBUTES
+      // These are always provided by the game engine:
+      attribute vec3 Position;     // Vertex position in 3D space (x, y, z)
+      attribute vec4 Color;        // Vertex color (RGBA, usually white 1,1,1,1)
+      attribute vec2 TexCoord;     // Texture UV coordinates (0,0 to 1,1)
+      attribute vec4 RenderData;   // Screen info: xy=offset, zw=dimensions in pixels
+      attribute float Scale;       // Room zoom level (typically 0.5 in-game)
+      
+      // TRANSFORMATION MATRIX
+      // Provided by the engine to position vertices correctly on screen
+      uniform mat4 Transform;      // Combined model-view-projection matrix
+      
+      // VARYINGS
+      // These interpolate values from vertices to fragments (pixels)
+      // "varying" means the value smoothly transitions across the polygon
+      varying vec4 Color0;         // Color passed to fragment shader
+      varying vec2 TexCoord0;      // UV coordinates passed to fragment shader
+      varying vec4 RenderDataOut;  // Screen dimensions passed to fragment shader
+      varying float ScaleOut;      // Zoom scale passed to fragment shader
+      
+      void main(void) {
+          // Simply copy all attributes to varyings
+          // This is the minimum required for a functional shader
+          Color0 = Color;
+          TexCoord0 = TexCoord;
+          RenderDataOut = RenderData;
+          ScaleOut = Scale;
+          
+          // Transform the vertex position to screen coordinates
+          // This line is required in every vertex shader!
+          gl_Position = Transform * vec4(Position.xyz, 1.0);
+      }
+    ]]></vertex>
+    <fragment><![CDATA[
+      // Simple Passthrough fragment shader for The Binding of Isaac
+      // This is the minimal fragment shader - renders the game unchanged
+      // Use this as a starting point for your own shader effects!
+      
+      // INPUT VARYINGS FROM VERTEX SHADER
+      // Precision qualifiers (lowp, mediump) help with mobile/GPU performance
+      varying lowp vec4 Color0;         // Vertex color (usually white)
+      varying mediump vec2 TexCoord0;   // UV coordinates (0,0 to 1,1)
+      varying lowp vec4 RenderDataOut;  // Screen dimensions (useful for effects)
+      varying lowp float ScaleOut;      // Zoom scale (useful for size calculations)
+      
+      // TEXTURE SAMPLER
+      // Texture0 is the game's rendered frame - your canvas to modify!
+      uniform sampler2D Texture0;
+      
+      void main(void) {
+          // THE SIMPLEST POSSIBLE FRAGMENT SHADER:
+          // 1. Sample the texture at the current UV coordinate
+          // 2. Multiply by Color0 to apply game's color tinting
+          // 3. Output to gl_FragColor
+          
+          // texture2D() reads a pixel from the texture at the given UV
+          // Color0 preserves any tinting the game applies (usually white=no change)
+          gl_FragColor = Color0 * texture2D(Texture0, TexCoord0);
+          
+          // TIP: To create effects, modify the result before outputting!
+          // Examples:
+          // - Change TexCoord0 before sampling for distortion effects
+          // - Modify the color after sampling for tinting effects
+          // - Use RenderDataOut.zw for position-based effects
+      }
+    ]]></fragment>
+  </shader>
+</shaders>

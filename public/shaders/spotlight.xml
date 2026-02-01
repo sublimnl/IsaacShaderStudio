@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<shaders>
+  <shader name="PlayerSpotlight" description="Creates a spotlight effect centered on the player with configurable radius and ambient lighting.">
+    <parameters>
+      <param name="PlayerPos" type="vec2" studioType="playerpos" />
+      <param name="Radius" type="float" default="0.05" min="0.01" max="0.5" step="0.01" />
+      <param name="Softness" type="float" default="0.16" min="0" max="0.5" step="0.02" />
+      <param name="Ambient" type="float" default="0.2" min="0" max="1" step="0.05" />
+    </parameters>
+    <vertex><![CDATA[
+      // The vertex shader runs once per screen corner (4 times total for a fullscreen quad)
+      // Its job is to position vertices and pass data to the fragment shader
+      
+      // These are always provided by Isaac's engine
+      attribute vec3 Position;       // Vertex position in 3D space
+      attribute vec4 Color;          // Vertex color (usually white, but can be tinted)
+      attribute vec2 TexCoord;       // Texture coordinates (0,0 to 1,1 across screen)
+      attribute vec4 RenderData;     // xy=screen offset, zw=screen dimensions in pixels
+      attribute float Scale;         // Current room zoom level (typically 0.5)
+      
+      // These come from our shader parameters
+      attribute vec2 PlayerPos;      // Player position in SCREEN PIXELS
+      attribute float Radius;        // Spotlight radius
+      attribute float Softness;      // How soft the spotlight edge is
+      attribute float Ambient;       // Background brightness level
+      
+      uniform mat4 Transform;        // Combined model-view-projection matrix for positioning
+      
+      // Varyings to pass through to the fragment shader
+      varying vec4 Color0;           // Color passed to fragment shader
+      varying vec2 TexCoord0;        // Texture coordinates passed to fragment shader
+      varying vec4 RenderDataOut;    // Screen info passed to fragment shader
+      varying float ScaleOut;        // Zoom level passed to fragment shader
+      
+      // Custom varyings for our spotlight parameters
+      varying vec2 PlayerPosOut;     // Player position passed to fragment shader
+      varying float RadiusOut;       // Spotlight radius passed to fragment shader
+      varying float SoftnessOut;     // Edge softness passed to fragment shader
+      varying float AmbientOut;      // Ambient light passed to fragment shader
+      
+      void main(void) {
+          // Pass through the standard Isaac data
+          Color0 = Color;                    // Usually white, preserves game's color tinting
+          TexCoord0 = TexCoord;              // Screen coordinates from (0,0) to (1,1)
+          RenderDataOut = RenderData;        // Screen dimensions and offset info
+          ScaleOut = Scale;                  // Current zoom level
+      
+          // Pass through our custom parameters
+          PlayerPosOut = PlayerPos;          // Player position (still in pixels)
+          RadiusOut = Radius;                // Spotlight size
+          SoftnessOut = Softness;            // How blurry the edge is
+          AmbientOut = Ambient;              // Background brightness
+      
+          gl_Position = Transform * vec4(Position.xyz, 1.0);
+      }
+    ]]></vertex>
+    <fragment><![CDATA[
+      // The fragment shader runs once per pixel on screen
+      // It determines the final color of each pixel
+      
+      // Passed through from the vertex shader
+      varying lowp vec4 Color0;
+      varying mediump vec2 TexCoord0;
+      varying lowp vec4 RenderDataOut;
+      varying lowp float ScaleOut;
+      
+      // Custom varyings passed from the vertex shader
+      varying mediump vec2 PlayerPosOut;
+      varying lowp float RadiusOut;
+      varying lowp float SoftnessOut;
+      varying lowp float AmbientOut;
+      
+      uniform sampler2D Texture0;
+      
+      void main(void) {
+          // Get the original game image at this pixel
+          vec4 tex = texture2D(Texture0, TexCoord0);
+      
+          // Convert player position from screen pixels to UV coordinates (0-1 range)
+          // PlayerPosOut is in pixels, RenderDataOut.zw is screen size in pixels
+          // ScaleOut accounts for the current room zoom level
+          vec2 center = (PlayerPosOut / RenderDataOut.zw) * ScaleOut;
+      
+          // Handle aspect ratio correction for circular spotlight
+          float aspectRatio = RenderDataOut.z / RenderDataOut.w;
+      
+          // Calculate distance from this pixel to the spotlight center
+          vec2 diff = TexCoord0 - center;    // Vector from center to current pixel
+          diff.x *= aspectRatio;             // Stretch X coordinate to make circle round
+          float dist = length(diff);         // Distance in UV space
+      
+          // Apply aspect ratio correction to our spotlight parameters too
+          float adjustedRadius = RadiusOut * aspectRatio;
+          float adjustedSoftness = SoftnessOut * aspectRatio;
+      
+          // Create the spotlight effect using smoothstep
+          // smoothstep creates a smooth transition from 0 to 1
+          float spotlight = smoothstep(
+              adjustedRadius + adjustedSoftness,  // Outer edge (dark)
+              adjustedRadius,                     // Inner edge (bright)
+              dist                                // Current distance
+          );
+      
+          // Combine ambient lighting with spotlight
+          float finalBrightness = AmbientOut + (1.0 - AmbientOut) * spotlight;
+      
+          // Apply the lighting effect to the original image
+          gl_FragColor = Color0 * tex * finalBrightness;
+      }
+    ]]></fragment>
+  </shader>
+</shaders>

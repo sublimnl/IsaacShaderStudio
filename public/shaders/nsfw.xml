@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<shaders>
+  <shader name="NSFW" description="Censors Isaac - demo of using a shader in a limited area.">
+    <parameters>
+      <param name="PlayerPos" type="vec2" studioType="playerpos" />
+      <param name="PixelSize" type="float" default="6.0" min="0" max="15" step="0.6" />
+      <param name="RegionSize" type="float" default="32.0" min="0" max="200" step="1" />
+    </parameters>
+    <vertex><![CDATA[
+      // Standard Isaac vertex shader attributes
+      attribute vec3 Position;      // Vertex position in 3D space
+      attribute vec4 Color;         // Vertex color from the game
+      attribute vec2 TexCoord;      // UV texture coordinates (0-1)
+      attribute vec4 RenderData;    // xy=offset, zw=texture dimensions in pixels
+      attribute float Scale;        // Room zoom level (typically 0.5)
+      
+      // Custom parameters for our effect
+      attribute vec2 PlayerPos;     // Player position in screen pixels (from playerpos type)
+      attribute float PixelSize;    // Size of pixelation blocks
+      attribute float RegionSize;   // Size of the censored region in pixels
+      
+      // Required transformation matrix
+      uniform mat4 Transform;       // Model-view-projection matrix
+      
+      // Output varyings to pass data to fragment shader
+      varying vec4 Color0;          // Pass through vertex color
+      varying vec2 TexCoord0;       // Pass through texture coordinates
+      varying vec4 RenderDataOut;   // Pass through render data
+      varying float ScaleOut;       // Pass through scale
+      varying vec2 PlayerPosOut;    // Pass through player position
+      varying float PixelSizeOut;   // Pass through pixelation size
+      varying float RegionSizeOut;  // Pass through region size
+      
+      void main(void) {
+          // Pass all attributes through to the fragment shader via varyings
+          Color0 = Color;
+          TexCoord0 = TexCoord;
+          RenderDataOut = RenderData;
+          ScaleOut = Scale;
+          PlayerPosOut = PlayerPos;
+          PixelSizeOut = PixelSize;
+          RegionSizeOut = RegionSize;
+      
+          // Transform vertex position for rendering
+          gl_Position = Transform * vec4(Position.xyz, 1.0);
+      }
+    ]]></vertex>
+    <fragment><![CDATA[
+      // Input varyings from vertex shader
+      varying lowp vec4 Color0;          // Game's vertex color
+      varying mediump vec2 TexCoord0;     // UV coordinates (0,0=top-left, 1,1=bottom-right)
+      varying lowp vec4 RenderDataOut;    // Render dimensions (zw = width,height in pixels)
+      varying lowp float ScaleOut;        // Room zoom level
+      varying mediump vec2 PlayerPosOut;  // Player position in screen pixels
+      varying lowp float PixelSizeOut;    // Pixelation block size
+      varying mediump float RegionSizeOut; // Censored region size in pixels
+      
+      // The game's rendered frame texture
+      uniform sampler2D Texture0;
+      
+      void main(void) {
+          // STEP 1: Convert player position from screen pixels to normalized UV space
+          // PlayerPos comes in screen pixels, we need to convert to 0-1 UV coordinates
+          vec2 playerUV = (PlayerPosOut / RenderDataOut.zw) * ScaleOut;
+      
+          // STEP 2: Convert region size from pixels to normalized space
+          // We want a square region, so we use the texture width for normalization
+          float halfRegionNormalized = (RegionSizeOut * 0.5) / RenderDataOut.z;
+      
+          // STEP 3: Calculate distance from current pixel to player center
+          vec2 pixelOffset = TexCoord0 - playerUV;
+      
+          // STEP 4: Check if current pixel is inside the square censorship region
+          // Using abs() to create a square region instead of circular
+          bool isInCensoredRegion = abs(pixelOffset.x) <= halfRegionNormalized &&
+          abs(pixelOffset.y) <= halfRegionNormalized;
+      
+          if (isInCensoredRegion) {
+              // STEP 5: Apply pixelation effect within the censored region
+              // Convert UV back to pixel coordinates, quantize, then back to UV
+              vec2 pixelCoords = TexCoord0 * RenderDataOut.zw;           // Convert to pixel space
+              vec2 quantizedPixels = floor(pixelCoords / PixelSizeOut);  // Quantize to blocks
+              vec2 pixelatedUV = quantizedPixels * PixelSizeOut / RenderDataOut.zw; // Back to UV
+      
+              // Sample the texture with pixelated coordinates
+              gl_FragColor = Color0 * texture2D(Texture0, pixelatedUV);
+          } else {
+              // STEP 6: Normal rendering outside the censored region
+              // Just pass through the original texture unchanged
+              gl_FragColor = Color0 * texture2D(Texture0, TexCoord0);
+          }
+      
+          // Note: Always multiply by Color0 to preserve Isaac's color system
+      }
+    ]]></fragment>
+  </shader>
+</shaders>

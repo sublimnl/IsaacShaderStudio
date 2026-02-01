@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<shaders>
+  <!-- Color Tint shader - Simple screen-wide color overlay effect -->
+  <shader name="ColorTint" description="Applies a customizable color tint overlay to the entire screen">
+    <parameters>
+      <param name="TintColor" type="vec3" studioType="color" default="#1ac725" />
+      <param name="Intensity" type="float" default="0.70" min="0" max="1" step="0.05" />
+    </parameters>
+    <vertex><![CDATA[
+      // Color Tint vertex shader for The Binding of Isaac
+      // A simple shader demonstrating color manipulation
+      // Great starting point for learning shader basics!
+      
+      // STANDARD ISAAC VERTEX ATTRIBUTES
+      // These are provided by the game engine for every shader:
+      attribute vec3 Position;     // Vertex position in 3D space (x, y, z)
+      attribute vec4 Color;        // Vertex color from game (RGBA, usually white)
+      attribute vec2 TexCoord;     // Texture UV coordinates (0,0 to 1,1)
+      attribute vec4 RenderData;   // Screen info: xy=offset, zw=dimensions in pixels
+      attribute float Scale;       // Room zoom level (typically 0.5 in-game)
+      
+      // CUSTOM SHADER PARAMETERS
+      // These come from the <parameters> section above
+      attribute vec3 TintColor;    // RGB color to tint with (0-1 per channel)
+      attribute float Intensity;   // How strong the tint is (0=none, 1=full)
+      
+      // TRANSFORMATION MATRIX
+      uniform mat4 Transform;      // Model-view-projection matrix from engine
+      
+      // VARYINGS - Data passed to fragment shader
+      // "varying" means values are interpolated across the polygon
+      varying vec4 Color0;         // Pass vertex color to fragment shader
+      varying vec2 TexCoord0;      // Pass UV coordinates to fragment shader
+      varying vec4 RenderDataOut;  // Pass screen dimensions to fragment shader
+      varying float ScaleOut;      // Pass zoom scale to fragment shader
+      
+      // Custom parameter varyings
+      varying vec3 TintColorOut;   // Pass tint color to fragment shader
+      varying float IntensityOut;  // Pass intensity to fragment shader
+      
+      void main(void) {
+          // Pass all standard attributes through to fragment shader
+          Color0 = Color;
+          TexCoord0 = TexCoord;
+          RenderDataOut = RenderData;
+          ScaleOut = Scale;
+          
+          // Pass custom parameters through
+          TintColorOut = TintColor;
+          IntensityOut = Intensity;
+          
+          // Transform vertex position to screen coordinates
+          // This is required in every vertex shader!
+          gl_Position = Transform * vec4(Position.xyz, 1.0);
+      }
+    ]]></vertex>
+    <fragment><![CDATA[
+      // Color Tint fragment shader for The Binding of Isaac
+      // Demonstrates the mix() function for blending colors
+      // 
+      // HOW COLOR TINTING WORKS:
+      // We multiply the original color by the tint color, then
+      // blend between original and tinted based on intensity
+      
+      // Input varyings from vertex shader
+      // Precision qualifiers (lowp, mediump) optimize GPU performance
+      varying lowp vec4 Color0;         // Vertex color (usually white)
+      varying mediump vec2 TexCoord0;   // UV coordinates for texture sampling
+      varying lowp vec4 RenderDataOut;  // Screen dimensions (not used here)
+      varying lowp float ScaleOut;      // Zoom scale (not used here)
+      
+      // Custom parameter varyings
+      varying lowp vec3 TintColorOut;   // RGB tint color (0-1 range)
+      varying lowp float IntensityOut;  // Blend amount (0=original, 1=full tint)
+      
+      // Texture sampler - the game's rendered frame
+      uniform sampler2D Texture0;
+      
+      void main(void) {
+          // STEP 1: Sample the original game image
+          // texture2D() reads the color at the current UV coordinate
+          vec4 tex = texture2D(Texture0, TexCoord0);
+          
+          // STEP 2: Apply tint color using multiplication
+          // Multiplying colors: (1,1,1) * tint = tint, (0,0,0) * tint = black
+          // This preserves shadows while adding color
+          vec3 tintedColor = tex.rgb * TintColorOut;
+          
+          // STEP 3: Blend between original and tinted using mix()
+          // mix(a, b, t) = a * (1-t) + b * t
+          // When Intensity=0: result = original (no tint)
+          // When Intensity=1: result = tinted (full tint)
+          // Values in between give partial tinting
+          vec3 finalColor = mix(tex.rgb, tintedColor, IntensityOut);
+          
+          // STEP 4: Output final color
+          // Multiply by Color0 to preserve game's color system
+          // Keep original alpha for transparency
+          gl_FragColor = Color0 * vec4(finalColor, tex.a);
+      }
+    ]]></fragment>
+  </shader>
+</shaders>

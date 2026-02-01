@@ -1,0 +1,39 @@
+<shaders>
+  <!-- Basic passthrough shader that renders the game without modifications -->
+  <shader name="SimplePassthrough" description="Basic passthrough shader that renders the game without modifications">
+    <vertex><![CDATA[
+attribute vec3 Position;
+attribute vec4 Color;
+attribute vec2 TexCoord;
+attribute vec4 RenderData;
+attribute float Scale;
+
+uniform mat4 Transform;
+
+varying vec4 Color0;
+varying vec2 TexCoord0;
+varying vec4 RenderDataOut;
+varying float ScaleOut;
+
+void main(void) {
+    Color0 = Color;
+    TexCoord0 = TexCoord;
+    RenderDataOut = RenderData;
+    ScaleOut = Scale;
+    gl_Position = Transform * vec4(Position.xyz, 1.0);
+}
+    ]]></vertex>
+    <fragment><![CDATA[
+varying lowp vec4 Color0;
+varying mediump vec2 TexCoord0;
+varying lowp vec4 RenderDataOut;
+varying lowp float ScaleOut;
+
+uniform sampler2D Texture0;
+
+void main(void) {
+    gl_FragColor = Color0 * texture2D(Texture0, TexCoord0);
+}
+    ]]></fragment>
+  </shader>
+</shaders>

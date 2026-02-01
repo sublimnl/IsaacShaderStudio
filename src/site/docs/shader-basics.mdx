@@ -1,0 +1,355 @@
+# Shader Basics
+
+Isaac shaders use GLSL (OpenGL Shading Language) with some Isaac-specific
+conventions. Shaders consist of two parts: a vertex shader and a fragment shader.
+
+## Isaac-Specific Differences
+
+Isaac's shader system differs from standard WebGL/OpenGL shaders in several
+important ways. Understanding these differences is crucial for writing working shaders.
+
+### Custom Parameters are Vertex Attributes, NOT Uniforms
+
+**This is the most important difference.** In standard GLSL, you'd pass custom
+values like player position as uniforms. In Isaac, custom parameters are passed
+as **vertex attributes** and must flow through varyings to the fragment shader.
+
+```glsl
+// WRONG - This won't work in Isaac!
+uniform vec2 PlayerPos;  // Isaac doesn't support custom uniforms
+
+// CORRECT - Parameters come through vertex attributes
+// In vertex shader:
+attribute vec2 PlayerPos;
+varying vec2 PlayerPosOut;
+void main() {
+    PlayerPosOut = PlayerPos;  // Pass to fragment shader
+    // ...
+}
+
+// In fragment shader:
+varying vec2 PlayerPosOut;  // Receive from vertex shader
+void main() {
+    // Use PlayerPosOut, not a uniform
+}
+```
+
+### Required Vertex Attributes
+
+Isaac expects these attributes in every vertex shader:
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `Position` | vec3 | Vertex position |
+| `Color` | vec4 | Vertex color (RGBA) |
+| `TexCoord` | vec2 | Texture coordinates |
+| `RenderData` | vec4 | Isaac render info (see below) |
+| `Scale` | float | Room zoom level (typically 0.5) |
+
+### The RenderData Attribute
+
+`RenderData` is an Isaac-specific vec4 containing render information:
+
+- `RenderData.xy` - Render offset/position
+- `RenderData.zw` - **Texture dimensions** (width, height in pixels)
+
+This is essential for converting screen-space coordinates:
+
+```glsl
+// Convert screen pixel position to normalized 0-1 UV space
+vec2 normalizedPos = (PlayerPosOut / RenderDataOut.zw) * ScaleOut;
+```
+
+### Player Position is in Screen Pixels
+
+When using the `playerpos` parameter type, the position comes from
+`Isaac.WorldToScreen()` and is in **screen pixels**, not normalized 0-1 coordinates.
+You must convert it yourself:
+
+```glsl
+// PlayerPosOut is in pixels (e.g., 320, 240)
+// RenderDataOut.zw is texture size (e.g., 480, 270)
+// ScaleOut is zoom level (e.g., 0.5)
+vec2 center = (PlayerPosOut / RenderDataOut.zw) * ScaleOut;
+```
+
+### Aspect Ratio Correction
+
+Isaac's rendering doesn't use a square viewport. For circular effects (spotlights,
+distance calculations), you need to account for aspect ratio:
+
+```glsl
+float aspectRatio = RenderDataOut.z / RenderDataOut.w;
+
+// Scale difference for circular distance calculation
+vec2 diff = TexCoord0 - center;
+diff.x *= aspectRatio;
+float dist = length(diff);
+
+// Also scale radius if needed
+float adjustedRadius = Radius * aspectRatio;
+```
+
+### Automatic GLSL Preprocessing
+
+The Shader Studio automatically converts older GLSL syntax to GLSL ES 3.00.
+You can write shaders using either style:
+
+| Old Syntax (GLSL ES 1.00) | Converted To (GLSL ES 3.00) |
+|---------------------------|----------------------------|
+| `attribute vec3 Position` | `in vec3 Position` |
+| `varying vec4 Color0` | `out vec4 Color0` (vertex) / `in vec4 Color0` (fragment) |
+| `texture2D(tex, uv)` | `texture(tex, uv)` |
+| `gl_FragColor = color` | `FragColor = color` |
+| `0.5f` | `0.5` |
+
+**You don't need to add `#version 300 es`** - it's added automatically.
+
+### Only `Texture0` and `Transform` are Valid Uniforms
+
+Isaac only provides these built-in uniforms:
+
+- `uniform sampler2D Texture0` - The game's rendered frame
+- `uniform mat4 Transform` - Model-view-projection matrix
+
+Any other uniforms you declare won't receive values. Use attributes + varyings instead.
+
+## Vertex Shader
+
+The vertex shader processes each vertex position. Most effects don't require
+modifying this - the default passthrough shader works for almost all cases.
+
+```glsl
+attribute vec3 Position;
+attribute vec4 Color;
+attribute vec2 TexCoord;
+
+uniform mat4 Transform;
+
+varying vec4 Color0;
+varying vec2 TexCoord0;
+
+void main(void) {
+    Color0 = Color;
+    TexCoord0 = TexCoord;
+    gl_Position = Transform * vec4(Position.xyz, 1.0);
+}
+```
+
+**When to modify the vertex shader:**
+- Vertex displacement effects (waves, distortion)
+- Custom coordinate transformations
+- Passing additional data to the fragment shader
+
+## Fragment Shader
+
+The fragment shader determines the color of each pixel. This is where most
+visual effects are implemented.
+
+```glsl
+varying lowp vec4 Color0;
+varying mediump vec2 TexCoord0;
+
+uniform sampler2D Texture0;
+
+void main(void) {
+    vec4 tex = texture2D(Texture0, TexCoord0);
+    gl_FragColor = Color0 * tex;
+}
+```
+
+**Key points:**
+- `texture2D(Texture0, TexCoord0)` samples the game's rendered frame
+- `gl_FragColor` is the final output color
+- Multiply by `Color0` to preserve vertex coloring
+
+## Built-in Uniforms
+
+| Uniform | Type | Description |
+|---------|------|-------------|
+| `Texture0` | sampler2D | The game's rendered frame |
+| `Transform` | mat4 | Model-view-projection matrix |
+
+## Built-in Varyings
+
+These are passed from vertex to fragment shader:
+
+| Varying | Type | Description |
+|---------|------|-------------|
+| `Color0` | vec4 | Vertex color (RGBA) |
+| `TexCoord0` | vec2 | Texture coordinates (0-1 range) |
+
+## Precision Qualifiers
+
+Always use precision qualifiers for mobile/WebGL compatibility:
+
+```glsl
+varying lowp vec4 Color0;        // Low precision for colors
+varying mediump vec2 TexCoord0;  // Medium precision for UVs
+uniform highp float Time;        // High precision for time values
+```
+
+**Guidelines:**
+- `lowp` - Colors, normalized values (0-1)
+- `mediump` - Texture coordinates, most calculations
+- `highp` - Time, large numbers, precision-critical math
+
+## Coordinate System
+
+- `TexCoord0` ranges from (0,0) at **top-left** to (1,1) at **bottom-right**
+- The center of the screen is at (0.5, 0.5)
+- **Note:** `playerpos` is in screen pixels and must be converted (see Isaac-Specific section above)
+
+## Common GLSL Functions
+
+### Math Functions
+```glsl
+float a = abs(x);           // Absolute value
+float a = sign(x);          // -1, 0, or 1
+float a = floor(x);         // Round down
+float a = ceil(x);          // Round up
+float a = fract(x);         // Fractional part (x - floor(x))
+float a = mod(x, y);        // Modulo (x % y)
+float a = min(x, y);        // Minimum
+float a = max(x, y);        // Maximum
+float a = clamp(x, 0.0, 1.0); // Clamp to range
+float a = mix(x, y, t);     // Linear interpolation
+float a = smoothstep(e0, e1, x); // Smooth interpolation
+```
+
+### Trigonometric Functions
+```glsl
+float a = sin(x);           // Sine (radians)
+float a = cos(x);           // Cosine
+float a = tan(x);           // Tangent
+float a = atan(y, x);       // Arc tangent
+```
+
+### Vector Functions
+```glsl
+float d = length(v);        // Vector length
+float d = distance(a, b);   // Distance between points
+vec3 n = normalize(v);      // Unit vector
+float d = dot(a, b);        // Dot product
+vec3 c = cross(a, b);       // Cross product (vec3 only)
+```
+
+### Texture Functions
+```glsl
+vec4 color = texture2D(sampler, uv);  // Sample texture
+```
+
+## Common Patterns
+
+### Distance from center
+```glsl
+float dist = distance(TexCoord0, vec2(0.5, 0.5));
+```
+
+### Distance from player
+```glsl
+uniform vec2 PlayerPos;
+float dist = distance(TexCoord0, PlayerPos);
+```
+
+### Circular gradient
+```glsl
+float dist = distance(TexCoord0, vec2(0.5));
+float gradient = smoothstep(0.5, 0.0, dist);
+```
+
+### Color manipulation
+```glsl
+// Grayscale using luminance weights
+float gray = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+
+// Increase contrast
+color.rgb = (color.rgb - 0.5) * contrast + 0.5;
+
+// Adjust brightness
+color.rgb *= brightness;
+
+// Invert colors
+color.rgb = 1.0 - color.rgb;
+```
+
+### UV manipulation
+```glsl
+// Flip horizontally
+vec2 uv = vec2(1.0 - TexCoord0.x, TexCoord0.y);
+
+// Zoom
+vec2 uv = (TexCoord0 - 0.5) * zoom + 0.5;
+
+// Wave distortion
+vec2 uv = TexCoord0;
+uv.x += sin(uv.y * frequency) * amplitude;
+```
+
+## Tips
+
+- Always multiply final color by `Color0` to preserve game coloring
+- Use `smoothstep` instead of linear interpolation for smoother transitions
+- Test edge cases: what happens at UV coordinates outside 0-1?
+- Keep performance in mind: avoid unnecessary texture samples
+- Use `const` for values that don't change
+
+## Debugging
+
+- Output a solid color to verify shader is running: `gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);`
+- Visualize UV coordinates: `gl_FragColor = vec4(TexCoord0, 0.0, 1.0);`
+- Visualize a varying: `gl_FragColor = vec4(vec3(myVarying), 1.0);`
+- Check for NaN: if screen goes black, you might have division by zero
+
+## Common Isaac Shader Issues
+
+### "My uniform doesn't work"
+
+Isaac doesn't support custom uniforms. Use vertex attributes + varyings instead:
+
+```glsl
+// Instead of: uniform float MyParam;
+// Use in vertex shader:
+attribute float MyParam;
+varying float MyParamOut;
+void main() { MyParamOut = MyParam; ... }
+
+// Use in fragment shader:
+varying float MyParamOut;
+```
+
+### "Player position is wrong / off-screen"
+
+PlayerPos is in screen pixels, not normalized coordinates. Convert it:
+
+```glsl
+vec2 center = (PlayerPosOut / RenderDataOut.zw) * ScaleOut;
+```
+
+### "My spotlight is oval, not circular"
+
+Account for aspect ratio:
+
+```glsl
+float aspectRatio = RenderDataOut.z / RenderDataOut.w;
+vec2 diff = TexCoord0 - center;
+diff.x *= aspectRatio;
+float dist = length(diff);
+```
+
+### "Shader works in studio but not in actual Isaac"
+
+Make sure you're:
+1. Using attributes for custom params, not uniforms
+2. Passing all values through varyings
+3. Including all required attributes (Position, Color, TexCoord, RenderData, Scale)
+4. Using the MC_GET_SHADER_PARAMS callback in Lua to provide parameter values
+
+### "Colors look different in-game"
+
+Isaac may use different blending modes or color spaces. Always multiply your
+final color by `Color0` to preserve Isaac's vertex coloring:
+
+```glsl
+gl_FragColor = Color0 * yourCalculatedColor;
+```

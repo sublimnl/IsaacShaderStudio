@@ -1,0 +1,204 @@
+# Attributes (Parameters)
+
+Attributes let you add custom uniforms to your shader that can be adjusted in
+real-time during preview, or automatically updated by the game.
+
+## Adding an Attribute
+
+1. Go to the **Attributes** tab in the editor
+2. Click **Add Parameter**
+3. Configure the attribute properties:
+   - **Name**: The uniform name in your shader (e.g., `Intensity`)
+   - **Type**: The data type (see table below)
+   - **Default**: Initial value (for manual types)
+   - **Min/Max/Step**: Range controls for numeric types
+
+## Attribute Types
+
+### Manual Types
+
+These types give you direct control via sliders or inputs:
+
+| Type | GLSL Type | UI Control | Description |
+|------|-----------|------------|-------------|
+| `Float` | float | Slider | Single numeric value |
+| `Vec2` | vec2 | Two sliders | 2D vector (x, y) |
+| `Vec3` | vec3 | Three sliders | 3D vector (x, y, z) |
+| `Vec4` | vec4 | Four sliders | 4D vector (x, y, z, w) |
+| `Boolean` | float | Toggle switch | 0.0 (off) or 1.0 (on) |
+| `Color` | vec3 | Color picker | RGB color (0-1 range) |
+
+### Automatic Types
+
+These types are updated automatically and don't appear in Runtime Parameters:
+
+| Type | GLSL Type | Description |
+|------|-----------|-------------|
+| `Time (Auto)` | float | Frame counter that auto-increments |
+| `Player Position (Auto)` | vec2 | Player's position (0-1 normalized) |
+| `Tear Position (Auto)` | vec2 | Position of player's tears |
+| `Mouse Position (Debug)` | vec2 | Mouse position for testing |
+
+## Type Details
+
+### Float
+
+A single number controlled by a slider.
+
+**Options:**
+- **Default**: Starting value
+- **Min**: Minimum slider value
+- **Max**: Maximum slider value
+- **Step**: Slider increment
+
+```glsl
+uniform float Intensity;  // 0.0 to 1.0
+uniform float Scale;      // Can be any range
+```
+
+### Vec2, Vec3, Vec4
+
+Multi-component vectors. Each component gets its own slider.
+
+**Default format**: Comma-separated values (e.g., `0.5, 0.5` for vec2)
+
+```glsl
+uniform vec2 Offset;      // x, y
+uniform vec3 Direction;   // x, y, z
+uniform vec4 Bounds;      // x, y, z, w
+```
+
+### Boolean
+
+A toggle that sends 0.0 or 1.0 to the shader. In GLSL, declare as float:
+
+```glsl
+uniform float EnableEffect;
+
+void main() {
+    vec4 tex = texture2D(Texture0, TexCoord0);
+    if (EnableEffect > 0.5) {
+        // Effect enabled
+        tex.rgb = 1.0 - tex.rgb;  // Invert
+    }
+    gl_FragColor = tex;
+}
+```
+
+### Color
+
+A color picker that sends RGB values as vec3 (0-1 range):
+
+```glsl
+uniform vec3 TintColor;
+
+void main() {
+    vec4 tex = texture2D(Texture0, TexCoord0);
+    tex.rgb *= TintColor;  // Apply tint
+    gl_FragColor = tex;
+}
+```
+
+### Time (Auto)
+
+An automatically incrementing frame counter. Perfect for animations.
+
+**Options:**
+- **FPS**: Frame rate multiplier (default: 60). Set to 30 for half-speed.
+
+```glsl
+uniform float Time;
+
+void main() {
+    vec2 uv = TexCoord0;
+    uv.x += sin(Time * 0.1) * 0.02;  // Oscillating offset
+    gl_FragColor = texture2D(Texture0, uv);
+}
+```
+
+**Tips for Time:**
+- Multiply by small values (0.01-0.1) to slow down animations
+- Use `sin(Time)` or `cos(Time)` for oscillating effects
+- Use `fract(Time * speed)` for repeating cycles
+
+### Player Position (Auto)
+
+The player's position normalized to 0-1 range.
+
+**Options:**
+- **Coordinate Space**:
+  - `Screen` (default): Position on screen (0-1 range)
+  - `World`: Position in game world (pixel coordinates)
+
+```glsl
+uniform vec2 PlayerPos;
+
+void main() {
+    float dist = distance(TexCoord0, PlayerPos);
+    float spotlight = smoothstep(0.3, 0.1, dist);
+    vec4 tex = texture2D(Texture0, TexCoord0);
+    gl_FragColor = tex * spotlight;
+}
+```
+
+### Tear Position (Auto)
+
+Position of player tears on screen. Useful for effects that follow projectiles.
+
+**Options:**
+- **Index**: Which tear to track (1-10). Create multiple tearpos attributes
+  with different indices to track multiple tears.
+
+```glsl
+uniform vec2 Tear1Pos;
+uniform vec2 Tear2Pos;
+
+void main() {
+    float dist1 = distance(TexCoord0, Tear1Pos);
+    float dist2 = distance(TexCoord0, Tear2Pos);
+    float glow = smoothstep(0.1, 0.0, min(dist1, dist2));
+    // ... apply glow effect
+}
+```
+
+### Mouse Position (Debug)
+
+For testing position-based effects without moving the player. Uses actual
+mouse cursor position.
+
+```glsl
+uniform vec2 MousePos;  // Same usage as PlayerPos
+```
+
+## Naming Conventions
+
+- Use **PascalCase** for uniform names (e.g., `PlayerPos`, `TintColor`)
+- Keep names descriptive but concise
+- Avoid GLSL reserved words
+
+## Default Values
+
+Set sensible defaults so your shader looks good immediately:
+
+| Type | Suggested Default |
+|------|------------------|
+| Float (intensity) | 1.0 |
+| Float (radius) | 0.3-0.5 |
+| Float (strength) | 0.5 |
+| Vec2 (offset) | 0.0, 0.0 |
+| Boolean | Off (0.0) |
+| Color | White (#ffffff) |
+
+## Runtime Parameters Panel
+
+After compiling, manual attributes appear in the **Runtime Parameters** panel:
+- Adjust sliders to see changes instantly
+- No need to recompile when changing values
+- Current values are used when exporting
+
+## Export Behavior
+
+When exporting, attributes are converted to the appropriate Isaac format:
+- Automatic types generate the necessary Lua code to fetch game data
+- Manual types export with their current runtime values
+- The generated Lua handles all parameter passing to the shader

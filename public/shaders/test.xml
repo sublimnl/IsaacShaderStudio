@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<shaders>
+  <!-- Test Gradient - Debug shader that visualizes UV coordinates as colors -->
+  <shader name="TestGradient" description="Debug shader that visualizes UV coordinates as colors">
+    <vertex><![CDATA[
+      // Test Gradient vertex shader for The Binding of Isaac
+      // Standard passthrough - the real work happens in fragment shader
+      
+      // Standard Isaac attributes
+      attribute vec3 Position;     // Vertex position
+      attribute vec4 Color;        // Vertex color (usually white)
+      attribute vec2 TexCoord;     // UV coordinates (0,0 to 1,1)
+      attribute vec4 RenderData;   // xy=offset, zw=screen dimensions
+      attribute float Scale;       // Room zoom level
+      
+      // Transformation matrix
+      uniform mat4 Transform;
+      
+      // Varyings to pass to fragment shader
+      varying vec4 Color0;
+      varying vec2 TexCoord0;
+      varying vec4 RenderDataOut;
+      varying float ScaleOut;
+      
+      void main(void) {
+          // Pass through all values unchanged
+          Color0 = Color;
+          TexCoord0 = TexCoord;
+          RenderDataOut = RenderData;
+          ScaleOut = Scale;
+          gl_Position = Transform * vec4(Position.xyz, 1.0);
+      }
+    ]]></vertex>
+    <fragment><![CDATA[
+      // Test Gradient fragment shader for The Binding of Isaac
+      // Debug tool: displays UV coordinates as colors for troubleshooting
+      // 
+      // HOW TO READ THE OUTPUT:
+      // - Red channel   = X coordinate (0=left/black, 1=right/red)
+      // - Green channel = Y coordinate (0=top/black, 1=bottom/green)
+      // - Blue channel  = constant 0.5 (makes the gradient visible)
+      // 
+      // Top-left corner:    Dark (X=0, Y=0, so no red or green)
+      // Top-right corner:   Red (X=1, Y=0)
+      // Bottom-left corner: Green (X=0, Y=1)
+      // Bottom-right:       Yellow (X=1, Y=1, red+green=yellow)
+      
+      // Input varyings from vertex shader
+      varying lowp vec4 Color0;         // Vertex color (not used here)
+      varying mediump vec2 TexCoord0;   // UV coordinates to visualize
+      varying lowp vec4 RenderDataOut;  // Screen dimensions (not used here)
+      varying lowp float ScaleOut;      // Zoom scale (not used here)
+      
+      // Texture sampler (not used in this debug shader)
+      uniform sampler2D Texture0;
+      
+      void main(void) {
+          // DEBUG VISUALIZATION
+          // Map UV coordinates directly to RGB color channels:
+          // - TexCoord0.x (0-1) becomes the Red channel
+          // - TexCoord0.y (0-1) becomes the Green channel
+          // - 0.5 constant for Blue (makes colors visible)
+          // - 1.0 for Alpha (fully opaque)
+          
+          gl_FragColor = vec4(TexCoord0.x, TexCoord0.y, 0.5, 1.0);
+          
+          // USAGE TIP:
+          // This shader helps debug:
+          // - UV coordinate issues
+          // - Texture mapping problems
+          // - Understanding how UV space maps to screen space
+          // - Verifying vertex data is correct
+      }
+    ]]></fragment>
+  </shader>
+</shaders>

@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<shaders>
+  <shader name="RandomColors" description="Demo shader that modifies RGB channels based on player position">
+    <parameters>
+      <param name="PlayerPos" type="vec2" studioType="playerpos" />
+    </parameters>
+    <vertex><![CDATA[
+      // Random Colors vertex shader for The Binding of Isaac
+      // Demonstrates using player position as a shader input
+      // Colors change as player moves around the room!
+      
+      // STANDARD ISAAC VERTEX ATTRIBUTES
+      attribute vec3 Position;     // Vertex position in normalized device coords (-1 to 1)
+      attribute vec4 Color;        // Per-vertex color (RGBA, typically white)
+      attribute vec2 TexCoord;     // Texture UV coordinates (0 to 1)
+      attribute vec4 RenderData;   // xy=window size, zw=texture size (in pixels)
+      attribute float Scale;       // Room zoom level (1.0 = no zoom)
+      
+      // CUSTOM PARAMETER
+      // playerpos studioType automatically gets player's screen position
+      attribute vec2 PlayerPos;    // Player position in screen pixels from WorldToScreen()
+      
+      // TRANSFORMATION MATRIX
+      uniform mat4 Transform;      // Model-view-projection matrix
+      
+      // VARYINGS - Interpolated values passed to fragment shader
+      varying vec4 Color0;         // Vertex color passed to fragment
+      varying vec2 TexCoord0;      // Texture coords passed to fragment
+      varying vec4 RenderDataOut;  // Render info passed to fragment
+      varying float ScaleOut;      // Zoom scale passed to fragment
+      varying vec2 PlayerPosOut;   // Player position passed to fragment
+      
+      void main(void) {
+          // Pass all data through to fragment shader
+          RenderDataOut = RenderData;
+          ScaleOut = Scale;
+          PlayerPosOut = PlayerPos;
+          Color0 = Color;
+          TexCoord0 = TexCoord;
+      
+          // Transform vertex position to clip space
+          gl_Position = Transform * vec4(Position.xyz, 1.0);
+      }
+    ]]></vertex>
+    <fragment><![CDATA[
+      // Random Colors fragment shader for The Binding of Isaac
+      // Modifies color channels based on player position
+      //
+      // EFFECT:
+      // - Red channel increases as player moves right (higher X)
+      // - Green channel increases as player moves down (higher Y)
+      // - Blue channel stays at 50%
+      //
+      // This creates a dynamic color shift that follows player movement!
+      
+      // Input varyings from vertex shader
+      varying lowp vec4 Color0;            // Vertex color
+      varying mediump vec2 TexCoord0;      // UV coordinates
+      varying lowp vec4 RenderDataOut;     // Screen dimensions
+      varying lowp float ScaleOut;         // Zoom scale
+      varying mediump vec2 PlayerPosOut;   // Player position in pixels
+      
+      // Game's rendered frame texture
+      uniform sampler2D Texture0;
+      
+      void main(void) {
+          // STEP 1: Sample original game frame
+          // Multiply by Color0 to get the base color
+          vec4 texColor = Color0 * texture2D(Texture0, TexCoord0);
+      
+          // STEP 2: Modify color channels based on player position
+          // PlayerPosOut is in screen pixels (e.g., 0-480 for X)
+          // Dividing by 100 and multiplying by 0.5 creates subtle variation
+      
+          // Red channel: increases as player moves RIGHT
+          // At X=0: red *= 0, at X=100: red *= 0.5, at X=200: red *= 1.0
+          texColor.r *= (PlayerPosOut.x / 500.0) * 0.5;
+      
+          // Green channel: increases as player moves DOWN
+          // At Y=0: green *= 0, at Y=100: green *= 0.5, at Y=200: green *= 1.0
+          texColor.g *= (PlayerPosOut.y / 500.0) * 0.5;
+      
+          // Blue channel: constant 50% reduction
+          // This gives the effect a consistent cool/warm balance
+          texColor.b *= 0.5;
+      
+          // Output the modified color
+          gl_FragColor = texColor;
+      
+          // TIP: Experiment with these formulas!
+          // Try: sin(PlayerPosOut.x * 0.01) for wave patterns
+          // Try: PlayerPosOut / RenderDataOut.zw for 0-1 normalized position
+          // Try: Adding Time parameter for animation
+      }
+    ]]></fragment>
+  </shader>
+</shaders>

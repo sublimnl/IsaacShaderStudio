@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<shaders>
+  <!-- Spotlight Debug - Diagnostic shader for understanding coordinate systems -->
+  <shader name="SpotlightDebug" description="Debug shader that visualizes different coordinate systems in quadrants">
+    <parameters>
+      <param name="playerpos" type="vec2"/>
+    </parameters>
+    <vertex><![CDATA[
+      // Spotlight Debug vertex shader for The Binding of Isaac
+      // Passes player position for coordinate system debugging
+      
+      // Standard Isaac attributes
+      attribute vec3 Position;     // Vertex position
+      attribute vec4 Color;        // Vertex color
+      attribute vec2 TexCoord;     // UV coordinates (0,0 to 1,1)
+      attribute vec4 RenderData;   // xy=offset, zw=screen dimensions
+      attribute float Scale;       // Room zoom level
+      
+      // Custom parameter - player position in screen pixels
+      attribute vec2 playerpos;
+      
+      // Transformation matrix
+      uniform mat4 Transform;
+      
+      // Varyings to pass to fragment shader
+      varying vec4 Color0;
+      varying vec2 TexCoord0;
+      varying vec4 RenderDataOut;
+      varying float ScaleOut;
+      varying vec2 playerposOut;   // Player position for debugging
+      
+      void main(void) {
+          // Pass through all values
+          Color0 = Color;
+          TexCoord0 = TexCoord;
+          RenderDataOut = RenderData;
+          ScaleOut = Scale;
+          playerposOut = playerpos;
+          gl_Position = Transform * vec4(Position.xyz, 1.0);
+      }
+    ]]></vertex>
+    <fragment><![CDATA[
+      // Spotlight Debug fragment shader for The Binding of Isaac
+      // Divides the screen into 4 quadrants to visualize coordinate systems
+      // 
+      // QUADRANT LAYOUT:
+      // +-------------------+-------------------+
+      // |   TOP-LEFT        |   TOP-RIGHT       |
+      // |   TexCoord        |   playerpos * 2x  |
+      // |   (UV coords)     |   / RenderData.zw |
+      // +-------------------+-------------------+
+      // |   BOTTOM-LEFT     |   BOTTOM-RIGHT    |
+      // |   playerpos * 1x  |   RenderData.zw   |
+      // |   / RenderData.zw |   / 1000          |
+      // +-------------------+-------------------+
+      
+      // Input varyings from vertex shader
+      varying lowp vec4 Color0;
+      varying mediump vec2 TexCoord0;      // UV coordinates to debug
+      varying lowp vec4 RenderDataOut;     // Screen dimensions
+      varying lowp float ScaleOut;         // Zoom scale
+      varying mediump vec2 playerposOut;   // Player position in pixels
+      
+      // Texture sampler (not used in debug mode)
+      uniform sampler2D Texture0;
+      
+      void main(void) {
+          // ============================================================
+          // TOP-LEFT QUADRANT: Raw TexCoord visualization
+          // Shows UV coordinates as colors (0,0)=black to (1,1)=yellow
+          // ============================================================
+          if (TexCoord0.y < 0.5) {
+              if (TexCoord0.x < 0.5) {
+                  // Red = X coordinate, Green = Y coordinate
+                  gl_FragColor = vec4(TexCoord0.x, TexCoord0.y, 0.0, 1.0);
+                  return;
+              }
+              
+              // ============================================================
+              // TOP-RIGHT QUADRANT: Player position with 2x multiplier
+              // This tests the "swirl formula" coordinate conversion
+              // Used by some effects that double the position
+              // ============================================================
+              vec2 pos2x = playerposOut * 2.0 / RenderDataOut.zw;
+              gl_FragColor = vec4(pos2x.x, pos2x.y, 0.0, 1.0);
+              return;
+          }
+          
+          // ============================================================
+          // BOTTOM-LEFT QUADRANT: Player position with 1x multiplier
+          // Standard conversion from pixels to normalized space
+          // This is the most common coordinate conversion formula
+          // ============================================================
+          if (TexCoord0.x < 0.5) {
+              vec2 pos1x = playerposOut / RenderDataOut.zw;
+              gl_FragColor = vec4(pos1x.x, pos1x.y, 0.0, 1.0);
+              return;
+          }
+          
+          // ============================================================
+          // BOTTOM-RIGHT QUADRANT: RenderData dimensions
+          // Shows the screen size divided by 1000 (to get visible colors)
+          // RenderData.z = width in pixels (e.g., 480)
+          // RenderData.w = height in pixels (e.g., 270)
+          // ============================================================
+          gl_FragColor = vec4(
+              RenderDataOut.z / 1000.0,  // Width / 1000 (e.g., 0.48)
+              RenderDataOut.w / 1000.0,  // Height / 1000 (e.g., 0.27)
+              0.0,
+              1.0
+          );
+          
+          // USAGE TIPS:
+          // - If top-left is a smooth gradient, TexCoord is working
+          // - If bottom quadrants match player movement, position is correct
+          // - Bottom-right should be consistent (screen size doesn't change)
+          // - Compare top-right vs bottom-left to understand coordinate scaling
+      }
+    ]]></fragment>
+  </shader>
+</shaders>

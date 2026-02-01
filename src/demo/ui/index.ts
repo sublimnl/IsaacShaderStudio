@@ -1,0 +1,1 @@
+// UI components - simplified for single room demo
