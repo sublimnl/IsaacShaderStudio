@@ -322,7 +322,7 @@ export function useShaderStudio() {
   // Load shader examples manifest
   const loadShaderManifest = useCallback(async () => {
     try {
-      const response = await fetch('/shaders/manifest.json')
+      const response = await fetch(`${import.meta.env.BASE_URL}shaders/manifest.json`)
       if (!response.ok) {
         throw new Error('Failed to load shader manifest')
       }
@@ -348,7 +348,7 @@ export function useShaderStudio() {
     try {
       addConsoleMessage('info', `Loading shader: ${shaderId}`)
 
-      const response = await fetch(`/shaders/${shaderId}.xml`)
+      const response = await fetch(`${import.meta.env.BASE_URL}shaders/${shaderId}.xml`)
       if (!response.ok) {
         throw new Error(`Failed to load shader: ${shaderId}`)
       }
