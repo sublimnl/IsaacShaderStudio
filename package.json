@@ -72,7 +72,7 @@
 		"start:old": "serve public -l 3000",
 		"dev:old": "./esbuild.js --watch & serve public -l 3000",
 		"dev": "vite",
-		"build": "./increase-version.js && vite build",
+		"build": "node increase-version.js && vite build",
 		"preview": "vite preview",
 		"bump": "./increase-version.js"
 	}
