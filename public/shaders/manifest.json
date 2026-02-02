@@ -6,34 +6,9 @@
       "file": "simple.xml"
     },
     {
-      "id": "spotlight",
-      "label": "Player Spotlight",
-      "file": "spotlight.xml"
-    },
-    {
-      "id": "multispotlight",
-      "label": "Multi Spotlight (Player + 5 Tears)",
-      "file": "multispotlight.xml"
-    },
-    {
-      "id": "tint",
-      "label": "Color Tint",
-      "file": "tint.xml"
-    },
-    {
-      "id": "wave",
-      "label": "Wave Distortion",
-      "file": "wave.xml"
-    },
-    {
-      "id": "water",
-      "label": "Water",
-      "file": "water.xml"
-    },
-    {
-      "id": "randomcolors",
-      "label": "Random Colors",
-      "file": "randomcolors.xml"
+      "id": "beergoggles",
+      "label": "Beer Goggles",
+      "file": "beergoggles.xml"
     },
     {
       "id": "censored",
@@ -41,9 +16,44 @@
       "file": "censored.xml"
     },
     {
+      "id": "tint",
+      "label": "Color Tint",
+      "file": "tint.xml"
+    },
+    {
+      "id": "duality",
+      "label": "Duality",
+      "file": "duality.xml"
+    },
+    {
+      "id": "multispotlight",
+      "label": "Multi Spotlight (Player + 5 Tears)",
+      "file": "multispotlight.xml"
+    },
+    {
       "id": "nightvision",
       "label": "Night Vision",
       "file": "nightvision.xml"
+    },
+    {
+      "id": "spotlight",
+      "label": "Player Spotlight",
+      "file": "spotlight.xml"
+    },
+    {
+      "id": "randomcolors",
+      "label": "Random Colors",
+      "file": "randomcolors.xml"
+    },
+    {
+      "id": "water",
+      "label": "Water",
+      "file": "water.xml"
+    },
+    {
+      "id": "wave",
+      "label": "Wave Distortion",
+      "file": "wave.xml"
     }
   ]
 }

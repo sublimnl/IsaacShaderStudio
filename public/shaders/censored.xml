@@ -1,14 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <shaders>
-  <!-- Censored Shader - Applies pixelation to a square region around the player -->
   <shader name="Censored" description="Censors Isaac - demo of using a shader in a limited area">
     <parameters>
-      <param name="PlayerPos" type="vec2"/>
-      <param name="PixelSize" type="float" default="6.0" min="0.0" max="15.0" step="0.6"/>
-      <param name="RegionSize" type="float" default="32.0" min="0.0" max="200.0" step="1.0"/>
+      <param name="PlayerPos" type="vec2" studioType="playerpos" />
+      <param name="PixelSize" type="float" default="6.0" min="0" max="15" step="0.6" />
+      <param name="RegionSize" type="float" default="32.0" min="0" max="200" step="1" />
     </parameters>
     <vertex><![CDATA[
-      // Censored vertex shader for The Binding of Isaac
       // Demonstrates applying an effect to a localized area
       
       // Standard Isaac vertex attributes
@@ -44,20 +42,19 @@
           PlayerPosOut = PlayerPos;
           PixelSizeOut = PixelSize;
           RegionSizeOut = RegionSize;
-          
+      
           // Transform vertex position
           gl_Position = Transform * vec4(Position.xyz, 1.0);
       }
     ]]></vertex>
     <fragment><![CDATA[
-      // Censored fragment shader for The Binding of Isaac
       // Demonstrates a localized pixelation effect
-      // 
+      //
       // TECHNIQUE:
       // 1. Check if current pixel is within the censored region
       // 2. If inside: apply pixelation by quantizing UV coordinates
       // 3. If outside: render normally
-      // 
+      //
       // PIXELATION EXPLAINED:
       // Pixelation works by making groups of pixels all sample from
       // the same texture coordinate, creating the "blocky" look
@@ -75,47 +72,41 @@
       uniform sampler2D Texture0;
       
       void main(void) {
-          // STEP 1: CONVERT PLAYER POSITION
           // Convert from screen pixels to normalized UV space (0-1)
           // Scale factor accounts for the room zoom level
           vec2 pos = (PlayerPosOut / RenderDataOut.zw) * ScaleOut;
-          
-          // STEP 2: CONVERT REGION SIZE
+      
           // Convert pixel-based region size to normalized space
           // Divide by screen width to get UV-space size
           float halfSizeNormalized = (RegionSizeOut * 0.5) / RenderDataOut.z;
-          
-          // STEP 3: CALCULATE OFFSET FROM PLAYER
+      
           // Find the vector from player position to current pixel
           vec2 diff = TexCoord0 - pos;
-          
-          // STEP 4: CHECK IF INSIDE SQUARE REGION
+      
           // Using abs() creates a square region (not circular)
           // abs(diff.x) = distance from center horizontally
           // abs(diff.y) = distance from center vertically
-          bool insideRegion = abs(diff.x) <= halfSizeNormalized && 
-                              abs(diff.y) <= halfSizeNormalized;
-          
+          bool insideRegion = abs(diff.x) <= halfSizeNormalized &&
+          abs(diff.y) <= halfSizeNormalized;
+      
           if (insideRegion) {
-              // STEP 5: APPLY PIXELATION
               // This is the core pixelation algorithm:
-              // 
+              //
               // 1. Convert UV to pixel coordinates
               //    UV * screen_size = pixel position
               vec2 pixelCoords = TexCoord0 * RenderDataOut.zw;
-              
+      
               // 2. Quantize to grid (floor rounds down to nearest block)
               //    floor(position / blockSize) = which block we're in
               vec2 quantized = floor(pixelCoords / PixelSizeOut);
-              
+      
               // 3. Convert back to UV space
               //    block * blockSize / screen_size = UV of block's top-left
               vec2 pixelatedUV = quantized * PixelSizeOut / RenderDataOut.zw;
-              
+      
               // Sample texture at the quantized (pixelated) coordinates
               gl_FragColor = Color0 * texture2D(Texture0, pixelatedUV);
           } else {
-              // STEP 6: NORMAL RENDERING
               // Outside the region, just render the game normally
               gl_FragColor = Color0 * texture2D(Texture0, TexCoord0);
           }

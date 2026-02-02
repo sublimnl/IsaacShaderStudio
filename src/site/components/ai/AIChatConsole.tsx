@@ -287,6 +287,8 @@ export function AIChatConsole() {
           // Reset retry count on success
           setAutoRetryCount(0)
           setLastAIAppliedMessageId(null)
+          // Remove auto-retry messages from history on successful fix
+          setMessages(prev => prev.filter(msg => !msg.isAutoRetry))
           addConsoleMessage('success', 'AI auto-fix successful!')
         }
         // If still failing, the effect below will trigger another retry
