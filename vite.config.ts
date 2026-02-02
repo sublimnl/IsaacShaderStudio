@@ -8,7 +8,7 @@ import glsl from 'highlight.js/lib/languages/glsl'
 import path from 'path'
 
 export default defineConfig({
-  base: '/IsaacShaderStudio/',
+  base: '/',  // Custom domain serves from root
   plugins: [
     { enforce: 'pre', ...mdx({
       remarkPlugins: [remarkGfm],
