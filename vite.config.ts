@@ -8,14 +8,16 @@ import glsl from 'highlight.js/lib/languages/glsl'
 import path from 'path'
 
 export default defineConfig({
-  base: '/',  // Custom domain serves from root
+  base: '/IsaacShaderStudio/',
   plugins: [
-    { enforce: 'pre', ...mdx({
-      remarkPlugins: [remarkGfm],
-      rehypePlugins: [[rehypeHighlight, {
-        languages: { glsl }
-      }]]
-    }) },
+    {
+      enforce: 'pre', ...mdx({
+        remarkPlugins: [remarkGfm],
+        rehypePlugins: [[rehypeHighlight, {
+          languages: { glsl }
+        }]]
+      })
+    },
     react(),
     tailwindcss()
   ],
