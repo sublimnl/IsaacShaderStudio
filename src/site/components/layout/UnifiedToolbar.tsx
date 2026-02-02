@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Button } from '@/site/components/ui/button'
-import { BookOpen, Info, Settings } from 'lucide-react'
+import { BookOpen, Github, Info, Settings } from 'lucide-react'
 import { DocumentationDialog } from '@/site/components/modals/DocumentationDialog'
 import { AboutDialog } from '@/site/components/modals/AboutDialog'
 import { SettingsDialog } from '@/site/components/modals/SettingsDialog'
@@ -63,6 +63,16 @@ export function UnifiedToolbar() {
         >
           <Info className="w-4 h-4" />
           About
+        </Button>
+
+        {/* GitHub */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => window.open('https://github.com/sublimnl/IsaacShaderStudio', '_blank')}
+        >
+          <Github className="w-4 h-4" />
+          GitHub
         </Button>
 
         {/* Ko-fi */}
