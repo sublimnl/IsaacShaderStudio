@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<shaders>
+  <shader name="BeerGoggles" description="Beer goggles effect with time-based distortion">
+    <parameters>
+      <param name="Enabled" type="float" studioType="boolean" default="1" />
+      <param name="Time" type="float" studioType="time" fps="60" />
+    </parameters>
+    <vertex><![CDATA[
+      // Standard vertex attributes required by Isaac
+      attribute vec3 Position;      // Vertex position in world space
+      attribute vec4 Color;         // Vertex color from the game
+      attribute vec2 TexCoord;      // Texture coordinates (0,0 to 1,1)
+      attribute vec4 RenderData;    // xy=offset, zw=texture dimensions in pixels
+      attribute float Scale;        // Room zoom level (typically 0.5)
+      
+      // Custom attributes for the beer goggles effect
+      attribute float Enabled;      // Boolean to enable/disable effect (1.0 = on, 0.0 = off)
+      attribute float Time;         // Auto-incrementing frame counter for animation
+      
+      // Required transform matrix uniform
+      uniform mat4 Transform;       // Model-view-projection matrix
+      
+      // Varyings to pass data from vertex to fragment shader
+      varying vec4 Color0;          // Pass through vertex color
+      varying vec2 TexCoord0;       // Pass through texture coordinates
+      varying lowp vec4 RenderDataOut;  // Pass through render data
+      varying lowp float ScaleOut;      // Pass through scale
+      varying lowp float EnabledOut;    // Pass through enabled state
+      varying mediump float TimeOut;    // Pass through time value
+      
+      void main(void) {
+          // Pass all vertex data through to fragment shader via varyings
+          Color0 = Color;
+          TexCoord0 = TexCoord;
+          RenderDataOut = RenderData;
+          ScaleOut = Scale;
+          EnabledOut = Enabled;
+          TimeOut = Time;
+      
+          // Transform vertex position to clip space
+          gl_Position = Transform * vec4(Position.xyz, 1.0);
+      }
+    ]]></vertex>
+    <fragment><![CDATA[
+      // Varyings received from vertex shader
+      varying lowp vec4 Color0;         // Vertex color from the game
+      varying mediump vec2 TexCoord0;   // Texture coordinates (0,0 to 1,1)
+      varying lowp vec4 RenderDataOut;  // Render data (not used in this shader)
+      varying lowp float ScaleOut;      // Scale value (not used in this shader)
+      varying lowp float EnabledOut;    // Effect enable/disable flag
+      varying mediump float TimeOut;    // Frame counter for time-based animation
+      
+      // The game's rendered frame texture
+      uniform sampler2D Texture0;
+      
+      void main(void) {
+          // Check if the beer goggles effect is enabled
+          if (EnabledOut > 0.0) {
+              // === DISTORTION CALCULATION ===
+      
+              // Control how strong the distortion effect is
+              mediump float magnitude = 0.02;
+      
+              // Create oscillating horizontal distortion using sine and cosine waves
+              // - sin(TimeOut / 200.0): Slow horizontal wave
+              // - cos(TimeOut / 100.0): Faster counter-wave
+              // - Subtracting them creates a complex wobbling motion
+              mediump float distortionX = sin(TimeOut / 200.0) * magnitude - cos(TimeOut / 100.0) * magnitude;
+      
+              // Apply the horizontal distortion to create new UV coordinates
+              // Only distorting X axis creates horizontal "swaying" effect
+              mediump vec2 distortedUV = TexCoord0 + vec2(distortionX, 0.0);
+      
+              // === COLOR SAMPLING ===
+      
+              // Sample the original pixel color at normal coordinates
+              lowp vec3 baseColor = texture2D(Texture0, TexCoord0).rgb;
+      
+              // Sample the pixel color at the distorted coordinates
+              lowp vec3 distortedColor = texture2D(Texture0, distortedUV).rgb;
+      
+              // === COLOR BLENDING ===
+      
+              // Blend the two colors together with equal weight (50/50 mix)
+              // This creates a "double vision" effect typical of beer goggles
+              lowp vec3 finalColor = (baseColor + distortedColor) * 0.5;
+      
+              // Output the final color, multiplied by vertex color to preserve game lighting
+              gl_FragColor = Color0 * vec4(finalColor, 1.0);
+          } else {
+              // === PASSTHROUGH MODE ===
+      
+              // When effect is disabled, just pass through the original texture
+              // Still multiply by Color0 to preserve game coloring
+              gl_FragColor = Color0 * texture2D(Texture0, TexCoord0);
+          }
+      }
+    ]]></fragment>
+  </shader>
+</shaders>

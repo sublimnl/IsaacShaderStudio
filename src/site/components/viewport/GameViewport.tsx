@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useGameEngine } from '@/site/hooks/useGameEngine'
+import { ViewportControls } from './ViewportControls'
 
 export function GameViewport() {
   const viewportRef = useRef<HTMLDivElement>(null)
@@ -84,6 +85,8 @@ export function GameViewport() {
           tabIndex={1}
           style={{ imageRendering: 'pixelated' }}
         />
+
+        <ViewportControls />
 
         {/* Loading overlay */}
         {isLoading && (

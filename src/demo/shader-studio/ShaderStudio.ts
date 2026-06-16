@@ -2455,6 +2455,24 @@ ${modName}:AddCallback(ModCallbacks.MC_GET_SHADER_PARAMS, ${modName}.GetShaderPa
     public getParameterManager(): ParameterManager {
         return this.paramManager;
     }
+
+    // --- GIF Recording ---
+
+    private recordedFrames: { data: Uint8Array; width: number; height: number }[] = [];
+
+    public startRecording(): void {
+        this.recordedFrames = [];
+        this.renderer.onFrameCaptured = (data, width, height) => {
+            this.recordedFrames.push({ data: data.slice(), width, height });
+        };
+        this.renderer.startCapture(50);
+    }
+
+    public stopRecording(): { data: Uint8Array; width: number; height: number }[] {
+        this.renderer.stopCapture();
+        this.renderer.onFrameCaptured = null;
+        return this.recordedFrames.splice(0);
+    }
 }
 
 // Export singleton accessor

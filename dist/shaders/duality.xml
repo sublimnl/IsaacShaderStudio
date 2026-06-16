@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<shaders>
+  <shader name="Duality" description="Split-screen duality effect that inverts colors on one side of the player">
+    <parameters>
+      <param name="Enabled" type="float" studioType="boolean" default="1.0" />
+      <param name="PlayerPos" type="vec2" studioType="playerpos" coordinateSpace="screen" />
+    </parameters>
+    <vertex><![CDATA[
+      // Creates a split-screen effect where one side shows inverted colors
+      // The split follows the player's horizontal position
+
+      attribute vec3 Position;    // World position of the vertex
+      attribute vec4 Color;       // Color tint from the game
+      attribute vec2 TexCoord;    // UV coordinates (0,0 top-left to 1,1 bottom-right)
+      attribute vec4 RenderData;  // xy=offset, zw=screen dimensions in pixels
+      attribute float Scale;      // Room zoom level
+      
+      // Custom parameters
+      attribute float Enabled;    // Boolean parameter (0.0 or 1.0)
+      attribute vec2 PlayerPos;   // Player's position in screen pixels
+      
+      // Standard varyings that all Isaac shaders need
+      varying vec4 Color0;        // Pass color to fragment shader
+      varying vec2 TexCoord0;     // Pass UV coordinates to fragment shader
+      varying vec4 RenderDataOut; // Pass screen dimensions to fragment shader
+      varying float ScaleOut;     // Pass zoom scale to fragment shader
+      
+      // Custom parameter varyings
+      varying float EnabledOut;   // Pass enabled state to fragment shader
+      varying vec2 PlayerPosOut;  // Pass player position to fragment shader
+      
+      // The transformation matrix
+      uniform mat4 Transform;
+      
+      void main(void) {
+          // Pass all data through to fragment shader
+          RenderDataOut = RenderData;
+          ScaleOut = Scale;
+          EnabledOut = Enabled;
+          PlayerPosOut = PlayerPos;
+          Color0 = Color;
+          TexCoord0 = TexCoord;
+      
+          // Transform vertex position to screen space
+          gl_Position = Transform * vec4(Position.xyz, 1.0);
+      }
+    ]]></vertex>
+    <fragment><![CDATA[
+      // Creates a split-screen effect where one side shows inverted colors
+      // The split follows the player's horizontal position
+      
+      // Input varyings from vertex shader
+      varying lowp vec4 Color0;        // Game's color tint
+      varying mediump vec2 TexCoord0;  // UV coordinates (0,0 to 1,1)
+      varying lowp vec4 RenderDataOut; // Screen dimensions in zw components
+      varying lowp float ScaleOut;     // Zoom scale
+      varying lowp float EnabledOut;   // Effect enable/disable toggle
+      varying lowp vec2 PlayerPosOut;  // Player position in screen pixels
+      
+      // The game's rendered frame
+      uniform sampler2D Texture0;
+      
+      // HELPER FUNCTIONS
+      // ================
+      
+      // Sample original texture color at UV coordinates
+      vec3 texsample(in vec2 uv) {
+          return texture2D(Texture0, uv).xyz;
+      }
+      
+      // Sample and invert texture color (1.0 - original)
+      // Creates negative/inverted color effect
+      vec3 texfilter(in vec2 uv) {
+          return 1.0 - texsample(uv);
+      }
+      
+      void main() {
+          // Only apply duality effect if enabled
+          if (EnabledOut > 0.0) {
+              vec2 uv = TexCoord0;
+      
+              // PLAYER POSITION CALCULATION
+              // Convert player position from pixels to normalized UV space (0-1)
+              // ScaleOut accounts for room zoom level
+              vec2 playerCenter = (PlayerPosOut / RenderDataOut.zw) * ScaleOut;
+              
+              // Calculate screen aspect ratio for proper proportions
+              float aspectRatio = RenderDataOut.z / RenderDataOut.w;
+      
+              // SPLIT LINE CALCULATION
+              // Calculate horizontal distance from current pixel to player
+              vec2 diff = uv - playerCenter;
+              diff.x *= aspectRatio;  // Correct for aspect ratio distortion
+      
+              // Create smooth transition at the split boundary
+              // smoothstep creates soft edge instead of hard line
+              float l = smoothstep(0.0, 1.0 / RenderDataOut.y, abs(diff.x));
+      
+              // COLOR SELECTION
+              // Sample inverted color (for right side of player)
+              vec3 cf = texfilter(uv);
+              // Sample original color (for left side of player)
+              vec3 cl = texsample(uv);
+              
+              // Choose which color to use based on horizontal position
+              // Left of player: original colors
+              // Right of player: inverted colors
+              vec3 cr = (uv.x < playerCenter.x ? cl : cf) * l;
+      
+              // Final output
+              gl_FragColor = vec4(cr, 1.0);
+          } else {
+              // When disabled, pass through original fragment color
+              gl_FragColor = Color0 * texture2D(Texture0, TexCoord0);
+          }
+      }
+    ]]></fragment>
+  </shader>
+</shaders>

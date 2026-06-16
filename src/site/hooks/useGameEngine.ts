@@ -7,10 +7,18 @@ interface WebBOIConstructor {
   new(): any
 }
 
+interface RecordedFrame {
+  data: Uint8Array
+  width: number
+  height: number
+}
+
 interface StudioInstance {
   isInitialized(): boolean
   refreshCanvas(): void
   getInstance?(): { renderer?: { fps?: number; frameCount?: number } } | null
+  startRecording?(): void
+  stopRecording?(): RecordedFrame[]
 }
 
 // Import from existing game engine

@@ -71,6 +71,7 @@ interface ShaderState {
   activeEditorTab: 'vertex' | 'fragment' | 'attributes'
   isCompiled: boolean
   isPlaying: boolean
+  isRecording: boolean
 
   // Dirty tracking
   isDirty: boolean
@@ -112,6 +113,7 @@ interface ShaderState {
   setRuntimeValue: (name: string, value: number | number[]) => void
   setIsCompiled: (compiled: boolean) => void
   setIsPlaying: (playing: boolean) => void
+  setIsRecording: (recording: boolean) => void
   addConsoleMessage: (type: ConsoleEntry['type'], message: string, errorLocation?: ConsoleErrorLocation) => void
   navigateToError: (shaderType: 'vertex' | 'fragment', line: number, column?: number) => void
   clearEditorNavigation: () => void
@@ -173,6 +175,7 @@ export const useShaderStore = create<ShaderState>((set) => ({
   activeEditorTab: 'vertex',
   isCompiled: false,
   isPlaying: true,
+  isRecording: false,
   isDirty: false,
   hasUnsavedShader: false,
   consoleMessages: [],
@@ -211,6 +214,7 @@ export const useShaderStore = create<ShaderState>((set) => ({
   })),
   setIsCompiled: (compiled) => set({ isCompiled: compiled }),
   setIsPlaying: (playing) => set({ isPlaying: playing }),
+  setIsRecording: (recording) => set({ isRecording: recording }),
   addConsoleMessage: (type, message, errorLocation) => set((state) => ({
     consoleMessages: [...state.consoleMessages, { type, message, timestamp: new Date(), errorLocation }]
   })),

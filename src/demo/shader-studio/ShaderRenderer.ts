@@ -33,6 +33,12 @@ export class ShaderRenderer {
     private currentFps: number = 0;
     private animationId: number | null = null;
 
+    // Frame capture state (for GIF recording)
+    private isCapturing: boolean = false;
+    private captureIntervalMs: number = 100;
+    private lastCaptureTime: number = 0;
+    public onFrameCaptured: ((data: Uint8Array, width: number, height: number) => void) | null = null;
+
     // Store attribute buffers for re-binding each frame
     private attributeBuffers: AttributeBuffer[] = [];
 
@@ -491,6 +497,17 @@ export class ShaderRenderer {
 
         this.gl.drawArrays(this.gl.TRIANGLE_STRIP, 0, 4);
 
+        // Capture frame for GIF recording (throttled to captureIntervalMs)
+        if (this.isCapturing && this.onFrameCaptured) {
+            const now = performance.now();
+            if (now - this.lastCaptureTime >= this.captureIntervalMs) {
+                this.lastCaptureTime = now;
+                const pixels = new Uint8Array(this.canvas.width * this.canvas.height * 4);
+                this.gl.readPixels(0, 0, this.canvas.width, this.canvas.height, this.gl.RGBA, this.gl.UNSIGNED_BYTE, pixels);
+                this.onFrameCaptured(pixels, this.canvas.width, this.canvas.height);
+            }
+        }
+
         // Check for GL errors on first few frames
         if (this.frameCount < 3) {
             const error = this.gl.getError();
@@ -552,6 +569,16 @@ export class ShaderRenderer {
             cancelAnimationFrame(this.animationId);
             this.animationId = null;
         }
+    }
+
+    public startCapture(intervalMs: number = 100): void {
+        this.captureIntervalMs = intervalMs;
+        this.lastCaptureTime = 0;
+        this.isCapturing = true;
+    }
+
+    public stopCapture(): void {
+        this.isCapturing = false;
     }
 
     public isActive(): boolean {

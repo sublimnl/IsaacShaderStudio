@@ -6,9 +6,6 @@
       <param name="Time" type="float" studioType="time" fps="60" />
     </parameters>
     <vertex><![CDATA[
-      // Standard vertex shader for Isaac shader system
-      // Passes all required attributes through to the fragment shader
-      
       attribute vec3 Position;    // World position of the vertex
       attribute vec4 Color;       // Color tint from the game
       attribute vec2 TexCoord;    // UV coordinates (0,0 top-left to 1,1 bottom-right)
